@@ -1,0 +1,720 @@
+import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { apiPost, apiGet } from '../utils/api';
+
+/* ═══════════════════════════════════════════════════════════════
+   🏢 COMPANY CONFIG — غيّر بيانات الشركة هنا
+   ═══════════════════════════════════════════════════════════════ */
+const COMPANY = {
+  name: 'مجموعة الشركة',
+  nameEn: 'COMPANY GROUP',
+  slogan: 'بوابة الدعم الفني الذكية',
+  description: 'فريقنا المتخصص جاهز لمساعدتك على مدار الساعة. قدّم طلبك وسنتعامل معه بأقصى سرعة واحترافية.',
+  // ← ضع رابط صورة الخلفية هنا (يمكن أن تكون صورة للمبنى أو اللوجو)
+  // heroBg: '/hero-bg.jpg',
+  heroBg: null,
+  // ← ضع رابط اللوجو هنا
+  // logo: '/logo.png',
+  logo: null,
+};
+
+/* ═══════════════ CONSTANTS ═══════════════ */
+const CATEGORIES = [
+  { value: 'hardware', label: 'أجهزة ومعدات', desc: 'كمبيوتر، طابعة، شاشة، ماوس', emoji: '🖥️', color: '#6366f1' },
+  { value: 'software', label: 'برامج وتطبيقات', desc: 'تثبيت، تحديث، ترخيص، أعطال', emoji: '⚙️', color: '#8b5cf6' },
+  { value: 'network', label: 'شبكة وإنترنت', desc: 'اتصال، WiFi، VPN، بطء', emoji: '🌐', color: '#06b6d4' },
+  { value: 'email', label: 'بريد إلكتروني', desc: 'Outlook، حساب، إرسال، استقبال', emoji: '📧', color: '#0ea5e9' },
+  { value: 'access', label: 'صلاحيات ودخول', desc: 'كلمة مرور، أذونات، حساب جديد', emoji: '🔐', color: '#f59e0b' },
+  { value: 'general', label: 'استفسار عام', desc: 'طلبات أخرى ومتنوعة', emoji: '💬', color: '#10b981' },
+];
+
+const PRIORITIES = [
+  { value: 'low', label: 'منخفضة', color: '#64748b', icon: '🟢' },
+  { value: 'medium', label: 'متوسطة', color: '#3b82f6', icon: '🔵' },
+  { value: 'high', label: 'عالية', color: '#f97316', icon: '🟠' },
+  { value: 'urgent', label: 'عاجلة', color: '#ef4444', icon: '🔴' },
+];
+
+const RESPONSE_TIMES = {
+  low:    { time: 'سوف يتم التعامل مع الطلب خلال ٥ دقائق', icon: '🕐', label: 'منخفضة', color: '#64748b' },
+  medium: { time: 'سوف يتم التعامل مع الطلب خلال ٥ دقائق', icon: '⏱️', label: 'متوسطة', color: '#3b82f6' },
+  high:   { time: 'سوف يتم التعامل مع الطلب خلال ٥ دقائق', icon: '⚡', label: 'عالية',  color: '#f97316' },
+  urgent: { time: 'سوف يتم التعامل مع الطلب خلال ٥ دقائق', icon: '🚨', label: 'عاجلة',  color: '#ef4444' },
+};
+
+const FEATURES = [
+  { icon: '⚡', title: 'استجابة فورية', desc: 'فريقنا يستجيب في دقائق' },
+  { icon: '🔒', title: 'سرّية تامة', desc: 'بياناتك محميّة ومشفّرة' },
+  { icon: '📊', title: 'تتبع مباشر', desc: 'تابع حالة طلبك لحظياً' },
+  { icon: '🏆', title: 'خبراء متخصصون', desc: 'فريق معتمد ومدرّب' },
+];
+
+const STEPS_INFO = [
+  { num: '1', title: 'أدخل بياناتك', desc: 'معلومات التواصل الأساسية' },
+  { num: '2', title: 'حدد المشكلة', desc: 'اختر التصنيف المناسب' },
+  { num: '3', title: 'وصف الطلب', desc: 'اشرح التفاصيل بدقة' },
+];
+
+/* ═══════════════ MAIN COMPONENT ═══════════════ */
+export default function UserTicketPortal() {
+  const [form, setForm] = useState({
+    requester_name: '', requester_email: '', requester_phone: '', requester_department: '',
+    title: '', description: '', category: '', priority: 'medium',
+  });
+  const [step, setStep] = useState(0); // 0=form, tracked via sections
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(null);
+  const [error, setError] = useState('');
+  const [trackInput, setTrackInput] = useState('');
+  const [trackResult, setTrackResult] = useState(null);
+  const [trackError, setTrackError] = useState('');
+  const [trackLoading, setTrackLoading] = useState(false);
+  const [showTracker, setShowTracker] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 50);
+    window.addEventListener('scroll', onScroll);
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!form.category) { setError('يرجى اختيار تصنيف المشكلة.'); return; }
+    if (!form.requester_name || !form.requester_email || !form.requester_department) { setError('يرجى ملء جميع الحقول المطلوبة.'); return; }
+    if (!form.title) { setError('يرجى كتابة عنوان للمشكلة.'); return; }
+    setError('');
+    setLoading(true);
+    try {
+      const res = await apiPost('/tickets', form);
+      setDone(res.ticket_number || res.data?.ticket_number);
+    } catch (err) {
+      setError(err?.response?.data?.error || 'حدث خطأ، يرجى المحاولة مجدداً.');
+    } finally { setLoading(false); }
+  };
+
+  const resetForm = () => {
+    setDone(null);
+    setTrackInput('');
+    setTrackResult(null);
+    setTrackError('');
+    setShowTracker(false);
+    setForm({ requester_name: '', requester_email: '', requester_phone: '', requester_department: '', title: '', description: '', category: '', priority: 'medium' });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleTrack = async () => {
+    const num = trackInput.trim().toUpperCase();
+    if (!num) return;
+    setTrackLoading(true);
+    setTrackResult(null);
+    setTrackError('');
+    try {
+      const data = await apiGet(`/tickets/track/${num}`);
+      setTrackResult(data);
+    } catch (err) {
+      setTrackError(err?.message || err?.response?.data?.error || 'لم يتم العثور على طلب بهذا الرقم');
+    } finally { setTrackLoading(false); }
+  };
+
+  /* ════════════════════════════════════════════════
+     SUCCESS STATE
+     ════════════════════════════════════════════════ */
+  if (done) {
+    const rt = RESPONSE_TIMES[form.priority] || RESPONSE_TIMES.medium;
+    const firstName = form.requester_name.trim().split(' ')[0] || 'موظفنا العزيز';
+
+    return (
+      <div className="ticket-portal" dir="rtl">
+        {/* Fixed Navbar */}
+        <Navbar scrolled={true} onTrack={() => setShowTracker(true)} />
+
+        <div style={{ minHeight: '100vh', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '100px 1rem 2rem' }}>
+          <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}
+            style={{ width: '100%', maxWidth: 560 }}>
+            
+            {/* Success Card */}
+            <div style={{ background: '#fff', borderRadius: 24, boxShadow: '0 25px 60px rgba(0,0,0,0.08)', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+              {/* Top gradient */}
+              <div style={{ height: 4, background: 'linear-gradient(90deg, #22c55e, #16a34a, #86efac)' }} />
+              
+              <div style={{ padding: '48px 40px' }}>
+                {/* Success Icon */}
+                <div style={{ textAlign: 'center', marginBottom: 32 }}>
+                  <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.15, type: 'spring', stiffness: 200 }}
+                    style={{ width: 80, height: 80, borderRadius: '50%', background: 'linear-gradient(135deg, #22c55e, #16a34a)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px', boxShadow: '0 16px 40px rgba(34,197,94,0.25)' }}>
+                    <svg width="36" height="36" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><polyline points="20,6 9,17 4,12"/></svg>
+                  </motion.div>
+                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+                    <p style={{ color: '#16a34a', fontSize: 13, fontWeight: 700, marginBottom: 6, letterSpacing: 1 }}>✓ تم الإرسال بنجاح</p>
+                    <h2 style={{ fontSize: 28, fontWeight: 800, color: '#0f172a', margin: '0 0 8px' }}>
+                      شكراً لك يا <span style={{ color: '#6366f1' }}>{firstName}</span>
+                    </h2>
+                    <p style={{ color: '#64748b', fontSize: 15, lineHeight: 1.7 }}>تم تسجيل طلبك وسيتم التعامل معه فوراً</p>
+                  </motion.div>
+                </div>
+
+                {/* Ticket Number */}
+                <div style={{ background: '#f8fafc', border: '2px dashed #e2e8f0', borderRadius: 16, padding: '20px', textAlign: 'center', marginBottom: 20 }}>
+                  <p style={{ color: '#94a3b8', fontSize: 11, fontWeight: 700, letterSpacing: 2, marginBottom: 8 }}>رقم التذكرة</p>
+                  <p style={{ fontSize: 32, fontWeight: 900, color: '#6366f1', fontFamily: 'monospace', letterSpacing: 4, margin: 0 }}>{done}</p>
+                </div>
+
+                {/* Response Time */}
+                <div style={{ background: `${rt.color}08`, border: `1px solid ${rt.color}20`, borderRadius: 14, padding: '16px 20px', marginBottom: 24, display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <span style={{ fontSize: 28 }}>{rt.icon}</span>
+                  <div>
+                    <p style={{ margin: 0, color: '#64748b', fontSize: 12, fontWeight: 600 }}>الوقت المتوقع — أولوية {rt.label}</p>
+                    <p style={{ margin: '4px 0 0', fontSize: 17, fontWeight: 800, color: rt.color }}>{rt.time}</p>
+                  </div>
+                </div>
+
+                {/* Track Section */}
+                <div style={{ background: '#f8fafc', borderRadius: 14, padding: '18px 20px', marginBottom: 24, border: '1px solid #e2e8f0' }}>
+                  <p style={{ color: '#475569', fontSize: 13, fontWeight: 700, marginBottom: 10 }}>🔍 تتبع طلبك</p>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <input value={trackInput} onChange={e => setTrackInput(e.target.value)} placeholder={done}
+                      style={{ flex: 1, background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 10, padding: '10px 14px', color: '#0f172a', fontSize: 14, fontFamily: 'monospace', outline: 'none' }}
+                      onFocus={e => e.target.style.borderColor = '#6366f1'} onBlur={e => e.target.style.borderColor = '#e2e8f0'} />
+                    <button onClick={handleTrack} disabled={trackLoading}
+                      style={{ background: '#6366f1', color: '#fff', border: 'none', borderRadius: 10, padding: '10px 20px', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+                      {trackLoading ? '...' : 'تتبع'}
+                    </button>
+                  </div>
+                  {trackError && <div style={{ marginTop: 10, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '10px 14px', color: '#dc2626', fontSize: 13, fontWeight: 600 }}>⚠️ {trackError}</div>}
+                  {trackResult && <TrackResultCard result={trackResult} />}
+                </div>
+
+                {/* Actions */}
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <button onClick={resetForm}
+                    style={{ flex: 1, background: '#6366f1', color: '#fff', border: 'none', borderRadius: 12, padding: '14px', fontWeight: 700, fontSize: 15, cursor: 'pointer', boxShadow: '0 4px 16px rgba(99,102,241,0.25)' }}>
+                    + طلب جديد
+                  </button>
+                  <button onClick={() => navigator.clipboard?.writeText(done)}
+                    style={{ background: '#f1f5f9', color: '#475569', border: '1px solid #e2e8f0', borderRadius: 12, padding: '14px 20px', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>
+                    📋 نسخ
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <p style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13, marginTop: 24 }}>
+              احتفظ برقم التذكرة <span style={{ color: '#6366f1', fontFamily: 'monospace', fontWeight: 700 }}>{done}</span> للمتابعة
+            </p>
+          </motion.div>
+        </div>
+
+        <PortalStyles />
+      </div>
+    );
+  }
+
+  /* ════════════════════════════════════════════════
+     MAIN FORM PAGE
+     ════════════════════════════════════════════════ */
+  return (
+    <div className="ticket-portal" dir="rtl">
+
+      {/* ═══════════════ FIXED NAVBAR ═══════════════ */}
+      <Navbar scrolled={scrolled} onTrack={() => setShowTracker(!showTracker)} />
+
+      {/* ═══════════════ HERO SECTION ═══════════════ */}
+      <section style={{
+        position: 'relative',
+        minHeight: 560,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+        background: COMPANY.heroBg
+          ? `url(${COMPANY.heroBg}) center/cover no-repeat`
+          : 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 40%, #312e81 70%, #1e293b 100%)',
+      }}>
+        {/* Overlay */}
+        <div style={{ position: 'absolute', inset: 0, background: COMPANY.heroBg ? 'rgba(15,23,42,0.75)' : 'transparent', zIndex: 1 }} />
+
+        {/* Animated Grid Pattern */}
+        <div style={{ position: 'absolute', inset: 0, zIndex: 1, opacity: 0.04,
+          backgroundImage: 'linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)',
+          backgroundSize: '60px 60px',
+        }} />
+
+        {/* Decorative Glowing Orbs */}
+        <div style={{ position: 'absolute', top: -100, right: '10%', width: 400, height: 400, borderRadius: '50%', background: 'radial-gradient(circle, rgba(99,102,241,0.15), transparent 70%)', filter: 'blur(60px)', zIndex: 1 }} />
+        <div style={{ position: 'absolute', bottom: -80, left: '15%', width: 350, height: 350, borderRadius: '50%', background: 'radial-gradient(circle, rgba(6,182,212,0.12), transparent 70%)', filter: 'blur(50px)', zIndex: 1 }} />
+        <div style={{ position: 'absolute', top: '30%', left: '5%', width: 200, height: 200, borderRadius: '50%', background: 'radial-gradient(circle, rgba(139,92,246,0.1), transparent 70%)', filter: 'blur(40px)', zIndex: 1 }} />
+
+        {/* Floating Particles */}
+        <div className="hero-particles" style={{ position: 'absolute', inset: 0, zIndex: 1 }}>
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="particle" style={{
+              position: 'absolute',
+              width: 4 + i * 2, height: 4 + i * 2,
+              borderRadius: '50%',
+              background: `rgba(${130 + i * 20}, ${140 + i * 15}, 241, ${0.15 + i * 0.05})`,
+              top: `${15 + i * 14}%`,
+              left: `${10 + i * 15}%`,
+              animation: `float ${4 + i * 1.5}s ease-in-out infinite alternate`,
+              animationDelay: `${i * 0.5}s`,
+            }} />
+          ))}
+        </div>
+
+        {/* Hero Content */}
+        <div style={{ position: 'relative', zIndex: 2, textAlign: 'center', padding: '120px 24px 80px', maxWidth: 780, margin: '0 auto' }}>
+          <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}>
+            
+            {/* Company Logo / Badge */}
+            {COMPANY.logo ? (
+              <img src={COMPANY.logo} alt={COMPANY.name} style={{ height: 60, marginBottom: 28, filter: 'brightness(0) invert(1)', opacity: 0.9 }} />
+            ) : (
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.08)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 100, padding: '10px 24px', marginBottom: 32 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <svg width="20" height="20" fill="none" stroke="#fff" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" /></svg>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: '#fff', lineHeight: 1.2 }}>{COMPANY.name}</p>
+                  <p style={{ margin: 0, fontSize: 10, fontWeight: 600, color: '#a5b4fc', letterSpacing: 2 }}>{COMPANY.nameEn}</p>
+                </div>
+              </div>
+            )}
+
+            <h1 style={{ fontSize: 'clamp(2rem, 5vw, 3.5rem)', fontWeight: 900, color: '#fff', lineHeight: 1.15, marginBottom: 20, letterSpacing: '-0.02em' }}>
+              {COMPANY.slogan.split(' ').slice(0, -1).join(' ')}{' '}
+              <span style={{ background: 'linear-gradient(90deg, #818cf8, #67e8f9, #a78bfa)', backgroundClip: 'text', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                {COMPANY.slogan.split(' ').slice(-1)}
+              </span>
+            </h1>
+
+            <p style={{ color: '#94a3b8', fontSize: 17, lineHeight: 1.8, maxWidth: 550, margin: '0 auto 36px' }}>
+              {COMPANY.description}
+            </p>
+
+            {/* CTA Buttons */}
+            <div style={{ display: 'flex', gap: 14, justifyContent: 'center', flexWrap: 'wrap' }}>
+              <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+                onClick={() => document.getElementById('ticket-form')?.scrollIntoView({ behavior: 'smooth' })}
+                style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)', color: '#fff', border: 'none', borderRadius: 14, padding: '16px 36px', fontWeight: 800, fontSize: 16, cursor: 'pointer', boxShadow: '0 8px 32px rgba(99,102,241,0.35)', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24" style={{ transform: 'scaleX(-1)' }}><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                قدّم طلب دعم
+              </motion.button>
+              <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+                onClick={() => setShowTracker(true)}
+                style={{ background: 'rgba(255,255,255,0.08)', backdropFilter: 'blur(10px)', color: '#e2e8f0', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 14, padding: '16px 32px', fontWeight: 700, fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}>
+                🔍 تتبع طلبك
+              </motion.button>
+            </div>
+          </motion.div>
+        </div>
+
+        {/* Bottom Wave */}
+        <div style={{ position: 'absolute', bottom: -1, left: 0, right: 0, zIndex: 3 }}>
+          <svg viewBox="0 0 1440 80" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block', width: '100%' }}>
+            <path d="M0,40 C240,80 480,0 720,40 C960,80 1200,0 1440,40 L1440,80 L0,80 Z" fill="#f8fafc" />
+          </svg>
+        </div>
+      </section>
+
+      {/* ═══════════════ FEATURES STRIP ═══════════════ */}
+      <section style={{ background: '#f8fafc', padding: '0 24px 60px' }}>
+        <div style={{ maxWidth: 1000, margin: '0 auto' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 20, marginTop: -40 }}>
+            {FEATURES.map((f, i) => (
+              <motion.div key={i} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.1 }}
+                style={{ background: '#fff', borderRadius: 20, padding: '28px 24px', textAlign: 'center', boxShadow: '0 4px 24px rgba(0,0,0,0.04)', border: '1px solid #f1f5f9', transition: 'all 0.3s' }}
+                className="feature-card">
+                <span style={{ fontSize: 32, display: 'block', marginBottom: 14 }}>{f.icon}</span>
+                <h4 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 800, color: '#0f172a' }}>{f.title}</h4>
+                <p style={{ margin: 0, fontSize: 13, color: '#64748b', lineHeight: 1.6 }}>{f.desc}</p>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ═══════════════ HOW IT WORKS ═══════════════ */}
+      <section style={{ background: '#fff', padding: '60px 24px', borderTop: '1px solid #f1f5f9' }}>
+        <div style={{ maxWidth: 800, margin: '0 auto', textAlign: 'center' }}>
+          <motion.div initial={{ opacity: 0, y: 15 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
+            <p style={{ color: '#6366f1', fontSize: 13, fontWeight: 700, letterSpacing: 2, marginBottom: 8 }}>●  كيف يعمل؟</p>
+            <h2 style={{ fontSize: 28, fontWeight: 900, color: '#0f172a', marginBottom: 40 }}>ثلاث خطوات بسيطة لتقديم طلبك</h2>
+          </motion.div>
+          
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 32 }}>
+            {STEPS_INFO.map((s, i) => (
+              <motion.div key={i} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.15 }}
+                style={{ position: 'relative' }}>
+                <div style={{ width: 56, height: 56, borderRadius: 16, background: 'linear-gradient(135deg, #eef2ff, #e0e7ff)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontSize: 22, fontWeight: 900, color: '#6366f1' }}>
+                  {s.num}
+                </div>
+                <h4 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 800, color: '#0f172a' }}>{s.title}</h4>
+                <p style={{ margin: 0, fontSize: 13, color: '#64748b', lineHeight: 1.6 }}>{s.desc}</p>
+                {i < STEPS_INFO.length - 1 && (
+                  <div className="step-connector" style={{ position: 'absolute', top: 28, left: -20, width: 40, height: 2, background: '#e2e8f0', display: 'none' }} />
+                )}
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ═══════════════ FORM SECTION ═══════════════ */}
+      <section id="ticket-form" style={{ background: '#f8fafc', padding: '60px 24px 80px', borderTop: '1px solid #f1f5f9' }}>
+        <div style={{ maxWidth: 880, margin: '0 auto' }}>
+          
+          {/* Section Header */}
+          <motion.div initial={{ opacity: 0, y: 15 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
+            style={{ textAlign: 'center', marginBottom: 40 }}>
+            <p style={{ color: '#6366f1', fontSize: 13, fontWeight: 700, letterSpacing: 2, marginBottom: 8 }}>●  نموذج الطلب</p>
+            <h2 style={{ fontSize: 28, fontWeight: 900, color: '#0f172a', marginBottom: 8 }}>تقديم طلب دعم فني</h2>
+            <p style={{ color: '#64748b', fontSize: 15 }}>يرجى ملء البيانات التالية بدقة لنتمكن من خدمتك بشكل أفضل</p>
+          </motion.div>
+
+          {/* Form Card */}
+          <motion.form onSubmit={submit} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
+            style={{ background: '#fff', borderRadius: 24, boxShadow: '0 20px 60px rgba(0,0,0,0.06)', border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+            
+            {/* Gradient top */}
+            <div style={{ height: 4, background: 'linear-gradient(90deg, #6366f1, #06b6d4, #8b5cf6)' }} />
+
+            <div style={{ padding: '44px 48px' }}>
+              {/* Error */}
+              {error && (
+                <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
+                  style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 14, padding: '14px 18px', marginBottom: 28, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 18 }}>⚠️</span>
+                  <span style={{ color: '#dc2626', fontWeight: 600, fontSize: 14 }}>{error}</span>
+                </motion.div>
+              )}
+
+              {/* ── Step 1: Contact Info ── */}
+              <SectionLabel number="01" title="معلومات التواصل" />
+              <div style={grid2}>
+                <Field label="الاسم الكامل" required>
+                  <Input placeholder="الاسم الثلاثي" value={form.requester_name} onChange={e => set('requester_name', e.target.value)} required icon="👤" />
+                </Field>
+                <Field label="القسم / الإدارة" required>
+                  <Input placeholder="مثال: المحاسبة" value={form.requester_department} onChange={e => set('requester_department', e.target.value)} required icon="🏢" />
+                </Field>
+                <Field label="البريد الإلكتروني" required>
+                  <Input type="email" placeholder="email@company.com" value={form.requester_email} onChange={e => set('requester_email', e.target.value)} required icon="✉️" />
+                </Field>
+                <Field label="رقم الهاتف" required>
+                  <Input type="tel" placeholder="01xxxxxxxxx" value={form.requester_phone} onChange={e => set('requester_phone', e.target.value)} required icon="📞" />
+                </Field>
+              </div>
+
+              <Divider />
+
+              {/* ── Step 2: Category ── */}
+              <SectionLabel number="02" title="تصنيف المشكلة" />
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, marginBottom: 32 }}>
+                {CATEGORIES.map(cat => (
+                  <button key={cat.value} type="button" onClick={() => { set('category', cat.value); setError(''); }}
+                    className="category-btn"
+                    style={{
+                      border: form.category === cat.value ? `2px solid ${cat.color}` : '2px solid #f1f5f9',
+                      borderRadius: 16, padding: '20px 18px', cursor: 'pointer', textAlign: 'right',
+                      background: form.category === cat.value ? `${cat.color}08` : '#fafbfc',
+                      display: 'flex', alignItems: 'flex-start', gap: 14,
+                      boxShadow: form.category === cat.value ? `0 4px 20px ${cat.color}20` : 'none',
+                      transition: 'all 0.25s ease', position: 'relative', overflow: 'hidden',
+                    }}>
+                    {/* Left accent line when selected */}
+                    {form.category === cat.value && (
+                      <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 3, background: cat.color, borderRadius: '0 4px 4px 0' }} />
+                    )}
+                    <span style={{ fontSize: 28, lineHeight: 1, flexShrink: 0 }}>{cat.emoji}</span>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ margin: 0, fontWeight: 700, fontSize: 14, color: form.category === cat.value ? cat.color : '#1e293b' }}>{cat.label}</p>
+                      <p style={{ margin: '4px 0 0', fontSize: 12, color: '#94a3b8', lineHeight: 1.5 }}>{cat.desc}</p>
+                    </div>
+                    {form.category === cat.value && (
+                      <span style={{ width: 22, height: 22, borderRadius: '50%', background: cat.color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <svg width="12" height="12" fill="none" stroke="#fff" strokeWidth="2.5" viewBox="0 0 24 24"><polyline points="20,6 9,17 4,12"/></svg>
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              <Divider />
+
+              {/* ── Step 3: Description ── */}
+              <SectionLabel number="03" title="وصف الطلب" />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                <Field label="عنوان مختصر للمشكلة" required>
+                  <Input placeholder="مثال: الطابعة لا تطبع في الدور الثالث" value={form.title} onChange={e => set('title', e.target.value)} required />
+                </Field>
+                <Field label="وصف تفصيلي">
+                  <textarea value={form.description} onChange={e => set('description', e.target.value)}
+                    placeholder="اشرح المشكلة بتفاصيل أكثر لمساعدتنا في حلها بشكل أسرع..."
+                    rows={4}
+                    className="form-input"
+                    style={{ width: '100%', background: '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: 12, padding: '14px 16px', fontSize: 15, color: '#0f172a', outline: 'none', fontFamily: 'inherit', resize: 'vertical', minHeight: 120, lineHeight: 1.7, transition: 'border-color 0.2s, box-shadow 0.2s' }}
+                  />
+                </Field>
+                <Field label="درجة الأهمية">
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    {PRIORITIES.map(p => (
+                      <button key={p.value} type="button" onClick={() => set('priority', p.value)}
+                        style={{
+                          flex: '1 1 100px', padding: '12px 18px', border: form.priority === p.value ? `2px solid ${p.color}` : '2px solid #e2e8f0',
+                          borderRadius: 12, cursor: 'pointer', fontWeight: 700, fontSize: 14,
+                          background: form.priority === p.value ? `${p.color}10` : '#fafbfc',
+                          color: form.priority === p.value ? p.color : '#64748b',
+                          boxShadow: form.priority === p.value ? `0 4px 16px ${p.color}20` : 'none',
+                          transition: 'all 0.2s ease',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                        }}>
+                        <span style={{ fontSize: 12 }}>{p.icon}</span>
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+              </div>
+            </div>
+
+            {/* ── Submit Footer ── */}
+            <div style={{ background: '#f8fafc', borderTop: '1px solid #e2e8f0', padding: '24px 48px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 0 3px rgba(34,197,94,0.15)' }} />
+                <span style={{ color: '#64748b', fontSize: 13, fontWeight: 600 }}>النظام يعمل بنجاح · متاح ٢٤/٧</span>
+              </div>
+              <motion.button type="submit" disabled={loading} whileHover={{ scale: loading ? 1 : 1.02 }} whileTap={{ scale: loading ? 1 : 0.97 }}
+                style={{
+                  background: loading ? '#94a3b8' : 'linear-gradient(135deg, #6366f1, #4f46e5)',
+                  color: '#fff', border: 'none', borderRadius: 14, padding: '15px 40px',
+                  fontWeight: 800, fontSize: 16, cursor: loading ? 'not-allowed' : 'pointer',
+                  boxShadow: loading ? 'none' : '0 8px 32px rgba(99,102,241,0.30)',
+                  display: 'flex', alignItems: 'center', gap: 10, transition: 'all 0.2s',
+                }}>
+                {loading ? (
+                  <><span className="submit-spinner" />جاري الإرسال...</>
+                ) : (
+                  <><svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" style={{ transform: 'scaleX(-1)' }}><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>إرسال الطلب</>
+                )}
+              </motion.button>
+            </div>
+          </motion.form>
+        </div>
+      </section>
+
+      {/* ═══════════════ FOOTER ═══════════════ */}
+      <footer style={{ background: '#0f172a', padding: '40px 24px', textAlign: 'center', borderTop: '1px solid #1e293b' }}>
+        <div style={{ maxWidth: 600, margin: '0 auto' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 16 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="16" height="16" fill="none" stroke="#fff" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" /></svg>
+            </div>
+            <span style={{ fontSize: 16, fontWeight: 800, color: '#fff' }}>{COMPANY.name}</span>
+          </div>
+          <p style={{ color: '#475569', fontSize: 13, lineHeight: 1.7, marginBottom: 16 }}>
+            نظام الدعم الفني المتكامل · فريقنا جاهز لخدمتك على مدار الساعة
+          </p>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 20, flexWrap: 'wrap' }}>
+            <span style={{ color: '#64748b', fontSize: 12 }}>📧 support@company.com</span>
+            <span style={{ color: '#334155' }}>·</span>
+            <span style={{ color: '#64748b', fontSize: 12 }}>📞 داخلي: 100</span>
+            <span style={{ color: '#334155' }}>·</span>
+            <span style={{ color: '#64748b', fontSize: 12 }}>🏢 قسم تكنولوجيا المعلومات</span>
+          </div>
+          <div style={{ height: 1, background: '#1e293b', margin: '24px 0' }} />
+          <p style={{ color: '#475569', fontSize: 12 }}>© {new Date().getFullYear()} {COMPANY.name} · جميع الحقوق محفوظة · نظام IT System Management</p>
+        </div>
+      </footer>
+
+      {/* ═══════════════ TRACK MODAL ═══════════════ */}
+      <AnimatePresence>
+        {showTracker && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+            onClick={() => setShowTracker(false)}>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              onClick={e => e.stopPropagation()}
+              style={{ background: '#fff', borderRadius: 24, width: '100%', maxWidth: 480, boxShadow: '0 25px 60px rgba(0,0,0,0.15)', overflow: 'hidden' }}>
+              <div style={{ height: 4, background: 'linear-gradient(90deg, #6366f1, #06b6d4)' }} />
+              <div style={{ padding: '32px 36px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+                  <h3 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#0f172a' }}>🔍 تتبع طلبك</h3>
+                  <button onClick={() => setShowTracker(false)} style={{ background: '#f1f5f9', border: 'none', borderRadius: 10, width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#64748b' }}>✕</button>
+                </div>
+                <p style={{ color: '#64748b', fontSize: 14, marginBottom: 20, lineHeight: 1.6 }}>أدخل رقم التذكرة لمعرفة حالة طلبك الحالية</p>
+                <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
+                  <input value={trackInput} onChange={e => setTrackInput(e.target.value)} placeholder="مثال: TKT-20261201-001"
+                    onKeyDown={e => e.key === 'Enter' && handleTrack()}
+                    style={{ flex: 1, background: '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: 12, padding: '13px 16px', color: '#0f172a', fontSize: 15, fontFamily: 'monospace', outline: 'none' }}
+                    onFocus={e => e.target.style.borderColor = '#6366f1'} onBlur={e => e.target.style.borderColor = '#e2e8f0'} />
+                  <button onClick={handleTrack} disabled={trackLoading}
+                    style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)', color: '#fff', border: 'none', borderRadius: 12, padding: '13px 24px', fontWeight: 700, fontSize: 15, cursor: 'pointer', boxShadow: '0 4px 16px rgba(99,102,241,0.25)' }}>
+                    {trackLoading ? '...' : 'تتبع'}
+                  </button>
+                </div>
+                {trackError && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 12, padding: '12px 16px', color: '#dc2626', fontSize: 13, fontWeight: 600, marginBottom: 12 }}>⚠️ {trackError}</div>}
+                {trackResult && <TrackResultCard result={trackResult} />}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <PortalStyles />
+    </div>
+  );
+}
+
+/* ═══════════════ NAVBAR ═══════════════ */
+function Navbar({ scrolled, onTrack }) {
+  return (
+    <nav style={{
+      position: 'fixed', top: 0, left: 0, right: 0, zIndex: 50,
+      background: scrolled ? 'rgba(255,255,255,0.92)' : 'transparent',
+      backdropFilter: scrolled ? 'blur(12px)' : 'none',
+      borderBottom: scrolled ? '1px solid rgba(226,232,240,0.6)' : '1px solid transparent',
+      transition: 'all 0.35s ease',
+      padding: '0 24px',
+    }}>
+      <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 64 }} dir="rtl">
+        {/* Logo */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ width: 34, height: 34, borderRadius: 10, background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(99,102,241,0.25)' }}>
+            <svg width="18" height="18" fill="none" stroke="#fff" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" /></svg>
+          </div>
+          <span style={{ fontSize: 16, fontWeight: 800, color: scrolled ? '#0f172a' : '#fff', transition: 'color 0.3s' }}>{COMPANY.name}</span>
+        </div>
+
+        {/* Actions */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button onClick={onTrack}
+            style={{ background: scrolled ? '#f1f5f9' : 'rgba(255,255,255,0.1)', border: scrolled ? '1px solid #e2e8f0' : '1px solid rgba(255,255,255,0.15)', color: scrolled ? '#475569' : '#e2e8f0', borderRadius: 10, padding: '8px 18px', fontWeight: 600, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.3s' }}>
+            🔍 تتبع طلب
+          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 0 2px rgba(34,197,94,0.2)' }} />
+            <span style={{ fontSize: 12, fontWeight: 600, color: scrolled ? '#64748b' : 'rgba(255,255,255,0.7)', transition: 'color 0.3s' }}>متاح الآن</span>
+          </div>
+        </div>
+      </div>
+    </nav>
+  );
+}
+
+/* ═══════════════ TRACK RESULT CARD ═══════════════ */
+function TrackResultCard({ result }) {
+  const statusMap = {
+    open:        { label: 'مفتوح', color: '#3b82f6', bg: '#eff6ff' },
+    in_progress: { label: 'جاري المعالجة', color: '#f97316', bg: '#fff7ed' },
+    resolved:    { label: 'تم الحل', color: '#22c55e', bg: '#f0fdf4' },
+    closed:      { label: 'مغلق', color: '#64748b', bg: '#f8fafc' },
+  };
+  const s = statusMap[result.status] || { label: result.status, color: '#94a3b8', bg: '#f8fafc' };
+  return (
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+      style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 16, padding: '18px 20px', marginTop: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+        <span style={{ fontFamily: 'monospace', color: '#6366f1', fontWeight: 800, fontSize: 15 }}>{result.ticket_number}</span>
+        <span style={{ background: s.bg, color: s.color, border: `1px solid ${s.color}30`, borderRadius: 20, padding: '4px 14px', fontWeight: 700, fontSize: 12 }}>{s.label}</span>
+      </div>
+      <p style={{ margin: '0 0 8px', color: '#0f172a', fontWeight: 700, fontSize: 14 }}>{result.title}</p>
+      {result.assigned_to_name && (
+        <p style={{ margin: '0 0 4px', color: '#64748b', fontSize: 12 }}>👤 مخصص إلى: <span style={{ color: '#334155', fontWeight: 600 }}>{result.assigned_to_name}</span></p>
+      )}
+      <p style={{ margin: 0, color: '#94a3b8', fontSize: 11 }}>آخر تحديث: {new Date(result.updated_at).toLocaleString('ar-EG')}</p>
+    </motion.div>
+  );
+}
+
+/* ═══════════════ FORM SUB-COMPONENTS ═══════════════ */
+function Input({ icon, ...props }) {
+  return (
+    <div style={{ position: 'relative' }}>
+      {icon && <span style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', fontSize: 16, pointerEvents: 'none' }}>{icon}</span>}
+      <input {...props} className="form-input"
+        style={{ width: '100%', background: '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: 12, padding: `13px ${icon ? '44px' : '16px'} 13px 16px`, fontSize: 15, color: '#0f172a', outline: 'none', fontFamily: 'inherit', transition: 'border-color 0.2s, box-shadow 0.2s' }}
+      />
+    </div>
+  );
+}
+
+function Field({ label, children, required }) {
+  return (
+    <div>
+      <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 8 }}>
+        {label} {required && <span style={{ color: '#f43f5e' }}>*</span>}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function SectionLabel({ number, title }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+      <span style={{ width: 36, height: 36, borderRadius: 12, background: 'linear-gradient(135deg, #eef2ff, #e0e7ff)', color: '#6366f1', fontSize: 13, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{number}</span>
+      <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0f172a' }}>{title}</h3>
+    </div>
+  );
+}
+
+function Divider() {
+  return <div style={{ height: 1, background: 'linear-gradient(90deg, transparent, #e2e8f0 20%, #e2e8f0 80%, transparent)', margin: '32px 0' }} />;
+}
+
+const grid2 = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '20px 28px' };
+
+/* ═══════════════ STYLES ═══════════════ */
+function PortalStyles() {
+  return (
+    <style>{`
+      .ticket-portal * { box-sizing: border-box; margin: 0; }
+      .ticket-portal { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #0f172a; }
+
+      .form-input:focus {
+        border-color: #6366f1 !important;
+        box-shadow: 0 0 0 4px rgba(99,102,241,0.1) !important;
+      }
+
+      .feature-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 12px 40px rgba(0,0,0,0.08) !important;
+        border-color: #e2e8f0 !important;
+      }
+
+      .category-btn:hover {
+        border-color: #c7d2fe !important;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 20px rgba(99,102,241,0.08) !important;
+      }
+
+      .submit-spinner {
+        width: 18px;
+        height: 18px;
+        border: 2.5px solid rgba(255,255,255,0.3);
+        border-top-color: #fff;
+        border-radius: 50%;
+        display: inline-block;
+        animation: spin 0.7s linear infinite;
+      }
+
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      @keyframes float {
+        0% { transform: translateY(0px) scale(1); opacity: 0.3; }
+        100% { transform: translateY(-30px) scale(1.3); opacity: 0.6; }
+      }
+
+      @media (max-width: 640px) {
+        .ticket-portal form > div:last-child { padding: 20px 24px !important; }
+        .ticket-portal form > div:nth-child(2) { padding: 32px 24px !important; }
+      }
+
+      /* Smooth scrollbar */
+      .ticket-portal::-webkit-scrollbar { width: 6px; }
+      .ticket-portal::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    `}</style>
+  );
+}

@@ -1,0 +1,847 @@
+import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  LineChart, Line, PieChart, Pie, Cell, Legend
+} from 'recharts';
+
+const API_URL = `${window.location.protocol}//${window.location.hostname}:3000/api`;
+
+// --- Icons Components ---
+const Icons = {
+  Cpu: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg>,
+  Users: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
+  Package: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22v-9"/></svg>,
+  CreditCard: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>,
+  Activity: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>,
+  Wrench: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>,
+  FileText: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>,
+  Settings: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>,
+  AlertCircle: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>,
+  TrendingUp: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>,
+  Plus: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></svg>,
+  Box: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+};
+
+export default function Dashboard() {
+  const navigate = useNavigate();
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [isReportsModalOpen, setIsReportsModalOpen] = useState(false);
+
+  useEffect(() => {
+    fetchStats();
+  }, []);
+
+  const fetchStats = async () => {
+    try {
+      console.log('🔄 Fetching dashboard stats...');
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+      
+      const res = await fetch(`${API_URL}/dashboard/stats`, {
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      
+      console.log('✅ Response received:', res.status);
+      
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      
+      const data = await res.json();
+      console.log('✅ Data parsed:', data);
+      setStats(data);
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        console.error('❌ Request timeout after 5 seconds');
+        toast.error('انتهى وقت الطلب - يرجى المحاولة مرة أخرى');
+      } else {
+        console.error('❌ Error fetching stats:', error);
+        toast.error('حدث خطأ في جلب البيانات');
+      }
+      // Set empty stats to prevent infinite loading
+      setStats({
+        devices: { total_devices: 0 },
+        employees: { total_employees: 0 },
+        departments: { total_departments: 0 },
+        maintenance: { total_maintenance: 0 },
+        assignments: { total_assignments: 0 },
+        subscriptions: { total_subscriptions: 0 },
+        inventory: { total_products: 0 }
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-50">
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+          <p className="text-gray-500 animate-pulse">جاري تحميل البيانات...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!stats) return null;
+
+  const totalMonthlyCost = parseFloat(stats.subscriptions?.monthly_cost || 0) + 
+                          (parseFloat(stats.subscriptions?.yearly_cost || 0) / 12);
+
+  const currentDate = new Date().toLocaleDateString('ar-EG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const hijriDate = new Intl.DateTimeFormat('ar-SA-u-ca-islamic', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  }).format(new Date());
+
+  return (
+    <div className="p-8 space-y-8 max-w-[1800px] mx-auto min-h-screen bg-gray-50/50" dir="rtl">
+      {/* Header Section */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mb-2">
+        <div>
+          <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight">لوحة التحكم</h1>
+          <p className="text-gray-500 mt-2 text-lg">مرحباً بك في نظام إدارة موارد تكنولوجيا المعلومات</p>
+        </div>
+        <div className="bg-white px-6 py-3 rounded-2xl shadow-sm border border-gray-100 text-gray-600 font-medium flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+          <span>{currentDate}</span>
+          <span className="mx-2 text-gray-300">|</span>
+          <span>{hijriDate}</span>
+        </div>
+      </div>
+
+      {/* ── Hero Stats Banner ── */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-indigo-950 to-violet-950 p-8 text-white shadow-2xl"
+      >
+        {/* decorative blobs */}
+        <div className="pointer-events-none absolute -top-24 -right-24 w-72 h-72 rounded-full bg-indigo-500/20 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-20 -left-16 w-64 h-64 rounded-full bg-violet-500/15 blur-3xl" />
+        <div className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 w-96 h-1 bg-gradient-to-r from-transparent via-indigo-400/60 to-transparent" />
+
+        <div className="relative z-10">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-xs font-semibold tracking-widest text-indigo-300 uppercase">نظرة عامة — مباشر</span>
+              </div>
+              <h2 className="text-2xl font-extrabold tracking-tight">إحصائيات النظام الكاملة</h2>
+              <p className="text-slate-400 text-sm mt-1">ملخص لحظي لجميع موارد تكنولوجيا المعلومات</p>
+            </div>
+            <button
+              onClick={fetchStats}
+              className="flex items-center gap-2 bg-white/10 hover:bg-white/20 transition-colors border border-white/10 rounded-xl px-4 py-2 text-sm font-semibold"
+            >
+              <Icons.Activity />
+              تحديث
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+            <HeroStat
+              label="إجمالي الأجهزة"
+              value={stats.devices?.total_devices || 0}
+              sub={`${stats.devices?.active_devices || 0} نشط`}
+              subColor="text-emerald-400"
+              icon="🖥️"
+              onClick={() => navigate('/devices')}
+            />
+            <HeroStat
+              label="الموظفون"
+              value={stats.employees?.total_employees || 0}
+              sub={`${stats.employees?.active_employees || 0} موظف نشط`}
+              subColor="text-sky-400"
+              icon="👥"
+              onClick={() => navigate('/employees')}
+            />
+            <HeroStat
+              label="تذاكر مفتوحة"
+              value={stats.tickets?.open_tickets || 0}
+              sub={stats.tickets?.urgent_open > 0 ? `${stats.tickets.urgent_open} عاجلة ⚠️` : `${stats.tickets?.today_tickets || 0} اليوم`}
+              subColor={stats.tickets?.urgent_open > 0 ? 'text-red-400' : 'text-indigo-300'}
+              icon="🎫"
+              onClick={() => navigate('/tickets')}
+              highlight={stats.tickets?.urgent_open > 0}
+            />
+            <HeroStat
+              label="طلبات صيانة"
+              value={(parseInt(stats.maintenance?.pending_maintenance || 0) + parseInt(stats.maintenance?.in_progress_maintenance || 0))}
+              sub={`${stats.maintenance?.completed_maintenance || 0} منجزة (٣٠ي)`}
+              subColor="text-amber-400"
+              icon="🔧"
+              onClick={() => navigate('/maintenance')}
+            />
+            <HeroStat
+              label="الاشتراكات النشطة"
+              value={stats.subscriptions?.active_subscriptions || 0}
+              sub={stats.subscriptions?.expiring_soon > 0 ? `${stats.subscriptions.expiring_soon} تنتهي قريباً` : 'لا تنبيهات'}
+              subColor={stats.subscriptions?.expiring_soon > 0 ? 'text-orange-400' : 'text-emerald-400'}
+              icon="📦"
+              onClick={() => navigate('/it/subscriptions')}
+            />
+            <HeroStat
+              label="منتجات المخزون"
+              value={stats.inventory?.total_products || 0}
+              sub={stats.inventory?.low_stock_items > 0 ? `${stats.inventory.low_stock_items} مخزون منخفض` : 'المخزون جيد'}
+              subColor={stats.inventory?.low_stock_items > 0 ? 'text-red-400' : 'text-emerald-400'}
+              icon="📊"
+              onClick={() => navigate('/inventory')}
+            />
+          </div>
+
+          {/* Ticket progress bar */}
+          {(stats.tickets?.total_tickets > 0) && (
+            <div className="mt-6 pt-6 border-t border-white/10">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">معدل حل التذاكر</span>
+                <span className="text-sm font-bold text-white">
+                  {Math.round((parseInt(stats.tickets?.resolved_tickets || 0) / parseInt(stats.tickets?.total_tickets || 1)) * 100)}%
+                </span>
+              </div>
+              <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${Math.round((parseInt(stats.tickets?.resolved_tickets || 0) / parseInt(stats.tickets?.total_tickets || 1)) * 100)}%` }}
+                  transition={{ duration: 1.2, ease: 'easeOut', delay: 0.3 }}
+                  className="h-full bg-gradient-to-r from-emerald-400 to-teal-400 rounded-full"
+                />
+              </div>
+              <div className="flex gap-6 mt-3 text-xs text-slate-400">
+                <span><span className="text-white font-bold">{stats.tickets?.total_tickets || 0}</span> إجمالي</span>
+                <span><span className="text-amber-400 font-bold">{stats.tickets?.open_tickets || 0}</span> مفتوحة</span>
+                <span><span className="text-blue-400 font-bold">{stats.tickets?.in_progress_tickets || 0}</span> جاري</span>
+                <span><span className="text-emerald-400 font-bold">{stats.tickets?.resolved_tickets || 0}</span> محلولة</span>
+                <span><span className="text-slate-300 font-bold">{stats.tickets?.week_tickets || 0}</span> هذا الأسبوع</span>
+              </div>
+            </div>
+          )}
+        </div>
+      </motion.div>
+
+      {/* Main Stats Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <StatCard 
+          title="إجمالي الأجهزة"
+          value={stats.devices?.total_devices || 0}
+          icon={<Icons.Cpu />}
+          trend="active"
+          trendValue={stats.devices?.active_devices}
+          color="indigo"
+          onClick={() => navigate('/devices')}
+        />
+        <StatCard 
+          title="الموظفين"
+          value={stats.employees?.total_employees || 0}
+          icon={<Icons.Users />}
+          trend="active"
+          trendValue={stats.employees?.active_employees}
+          color="emerald"
+          onClick={() => navigate('/employees')}
+        />
+        <StatCard 
+          title="الاشتراكات"
+          value={stats.subscriptions?.active_subscriptions || 0}
+          icon={<Icons.Package />}
+          trend="alert"
+          trendValue={stats.subscriptions?.expiring_soon}
+          color="violet"
+          onClick={() => navigate('/it/subscriptions')}
+        />
+        <StatCard 
+          title="التكلفة الشهرية"
+          value={`${totalMonthlyCost.toFixed(0)} ج.م`}
+          icon={<Icons.CreditCard />}
+          trend="info"
+          trendLabel="تقديري"
+          color="rose"
+          onClick={() => navigate('/it/subscriptions')}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+        {/* Left Column (Charts) */}
+        <div className="xl:col-span-2 space-y-8">
+          
+          {/* Device Types & Status */}
+          <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8">
+            <div className="flex justify-between items-center mb-8">
+              <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                <Icons.Cpu />
+                توزيع الأجهزة
+              </h3>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+              {/* Type Distribution */}
+              <div className="space-y-6">
+                <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">حسب النوع</h4>
+                <div className="space-y-4">
+                  {stats.devices?.by_type?.slice(0, 5).map((item, index) => ( // Show top 5 only
+                    <div key={index}>
+                      <div className="flex justify-between text-sm mb-2">
+                        <span className="font-medium text-gray-700">{item.type}</span>
+                        <span className="text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md text-xs">{item.count}</span>
+                      </div>
+                      <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
+                        <motion.div 
+                          initial={{ width: 0 }}
+                          animate={{ width: `${(item.count / stats.devices.total_devices) * 100}%` }}
+                          transition={{ duration: 1, delay: 0.2 * index }}
+                          className={`h-2.5 rounded-full ${getColorClass(index)}`}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Status Donut */}
+              <div className="flex flex-col items-center justify-center">
+                <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-6 w-full text-right md:text-center">حالة النظام</h4>
+                <DonutChart 
+                  data={[
+                    { label: 'نشط', value: stats.devices?.active_devices || 0, color: '#10B981' }, // emerald-500
+                    { label: 'صيانة', value: stats.devices?.maintenance_devices || 0, color: '#F59E0B' }, // amber-500
+                    { label: 'متقاعد', value: stats.devices?.retired_devices || 0, color: '#9CA3AF' }  // gray-400
+                  ]}
+                />
+                <div className="flex gap-4 mt-8 justify-center flex-wrap">
+                   <LegendItem label="نشط" value={stats.devices?.active_devices} color="bg-emerald-500" />
+                   <LegendItem label="صيانة" value={stats.devices?.maintenance_devices} color="bg-amber-500" />
+                   <LegendItem label="متقاعد" value={stats.devices?.retired_devices} color="bg-gray-400" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Maintenance Section */}
+          <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                <Icons.Wrench />
+                حالة الصيانة
+              </h3>
+              <button 
+                onClick={() => navigate('/maintenance')}
+                className="text-sm text-indigo-600 font-medium hover:text-indigo-800 transition-colors"
+              >
+                عرض السجل الكامل
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <MaintenanceCard 
+                label="طلبات معلقة" 
+                count={stats.maintenance?.pending_maintenance} 
+                color="amber" 
+                icon={<Icons.AlertCircle />} 
+              />
+              <MaintenanceCard 
+                label="قيد التنفيذ" 
+                count={stats.maintenance?.in_progress_maintenance} 
+                color="blue" 
+                icon={<Icons.Activity />} 
+              />
+              <MaintenanceCard 
+                label="تمت صيانتها" 
+                count={stats.maintenance?.completed_maintenance} 
+                color="emerald" 
+                icon={<Icons.Wrench />}
+                subtext="آخر 30 يوم"
+              />
+            </div>
+          </div>
+
+          {/* ── Monthly Overview Charts ── */}
+          <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8">
+            <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2 mb-6">
+              <Icons.TrendingUp />
+              الأجهزة المضافة شهرياً
+            </h3>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={stats.charts?.devices_monthly || []} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="month_label" tick={{ fontSize: 11, fill: '#9CA3AF' }} />
+                <YAxis tick={{ fontSize: 11, fill: '#9CA3AF' }} allowDecimals={false} />
+                <Tooltip
+                  contentStyle={{ borderRadius: 12, border: '1px solid #e5e7eb', fontSize: 12 }}
+                  formatter={(v) => [v, 'جهاز']}
+                />
+                <Bar dataKey="count" fill="#6366F1" radius={[6, 6, 0, 0]} name="أجهزة" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* ── Maintenance Monthly Chart ── */}
+          <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8">
+            <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2 mb-6">
+              <Icons.Wrench />
+              الصيانة الشهرية
+            </h3>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={stats.charts?.maintenance_monthly || []} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="month_label" tick={{ fontSize: 11, fill: '#9CA3AF' }} />
+                <YAxis yAxisId="left" tick={{ fontSize: 11, fill: '#9CA3AF' }} allowDecimals={false} />
+                <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: '#9CA3AF' }} />
+                <Tooltip
+                  contentStyle={{ borderRadius: 12, border: '1px solid #e5e7eb', fontSize: 12 }}
+                  formatter={(v, name) => name === 'count' ? [v, 'طلبات'] : [`${v} ج.م`, 'تكلفة']}
+                />
+                <Bar yAxisId="left" dataKey="count" fill="#F59E0B" radius={[6, 6, 0, 0]} name="count" />
+                <Bar yAxisId="right" dataKey="cost" fill="#FDE68A" radius={[6, 6, 0, 0]} name="cost" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* ── Employees by Department ── */}
+          <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8">
+            <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2 mb-6">
+              <Icons.Users />
+              الموظفون حسب القسم
+            </h3>
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={stats.charts?.emp_by_dept || []} layout="vertical" margin={{ top: 5, right: 30, left: 60, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+                <XAxis type="number" tick={{ fontSize: 11, fill: '#9CA3AF' }} allowDecimals={false} />
+                <YAxis type="category" dataKey="dept" tick={{ fontSize: 11, fill: '#374151' }} width={55} />
+                <Tooltip
+                  contentStyle={{ borderRadius: 12, border: '1px solid #e5e7eb', fontSize: 12 }}
+                  formatter={(v) => [v, 'موظف']}
+                />
+                <Bar dataKey="count" fill="#10B981" radius={[0, 6, 6, 0]} name="count" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* ── Tickets Trend ── */}
+          <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8">
+            <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2 mb-6">
+              <Icons.FileText />
+              تذاكر الدعم الشهرية
+            </h3>
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={stats.charts?.tickets_monthly || []} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="month_label" tick={{ fontSize: 11, fill: '#9CA3AF' }} />
+                <YAxis tick={{ fontSize: 11, fill: '#9CA3AF' }} allowDecimals={false} />
+                <Tooltip
+                  contentStyle={{ borderRadius: 12, border: '1px solid #e5e7eb', fontSize: 12 }}
+                  formatter={(v, name) => [v, name === 'total' ? 'إجمالي' : 'محلولة']}
+                />
+                <Line type="monotone" dataKey="total" stroke="#6366F1" strokeWidth={2} dot={{ r: 4 }} name="total" />
+                <Line type="monotone" dataKey="resolved" stroke="#10B981" strokeWidth={2} dot={{ r: 4 }} name="resolved" />
+              </LineChart>
+            </ResponsiveContainer>
+            <div className="flex gap-4 mt-3 text-xs text-gray-500 justify-center">
+              <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-indigo-500 inline-block rounded" /> إجمالي</span>
+              <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-emerald-500 inline-block rounded" /> محلولة</span>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Right Column (Sidebar Widgets) */}
+        <div className="space-y-8">
+          
+          {/* Quick Actions */}
+          <div className="bg-gradient-to-br from-indigo-600 to-violet-700 rounded-3xl shadow-lg p-8 text-white">
+            <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
+              <Icons.Activity className="opacity-80" />
+              وصول سريع
+            </h3>
+            <div className="grid grid-cols-2 gap-4">
+              <QuickActionButton icon={<Icons.Plus />} label="جهاز جديد" onClick={() => navigate('/devices')} />
+              <QuickActionButton icon={<Icons.Users />} label="موظف جديد" onClick={() => navigate('/employees')} />
+              <QuickActionButton icon={<Icons.Wrench />} label="طلب صيانة" onClick={() => navigate('/maintenance')} />
+              <QuickActionButton icon={<Icons.FileText />} label="التقارير" onClick={() => setIsReportsModalOpen(true)} />
+              <QuickActionButton icon={<Icons.Box />} label="المخزون" onClick={() => navigate('/inventory')} />
+              <QuickActionButton icon={<Icons.Settings />} label="الإعدادات" onClick={() => navigate('/settings')} />
+            </div>
+          </div>
+
+          {/* Recent Activity Feed */}
+          <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8 h-fit">
+            <h3 className="text-xl font-bold text-gray-800 mb-6">النشاط الأخير</h3>
+            <div className="relative border-r-2 border-gray-100 mr-3 space-y-8 pr-6">
+              {stats.recent_activities?.map((activity, index) => (
+                <div key={index} className="relative">
+                  <div className={`absolute top-1.5 -right-[31px] w-4 h-4 rounded-full border-2 border-white ${
+                    activity.type === 'device' ? 'bg-indigo-500' :
+                    activity.type === 'employee' ? 'bg-emerald-500' :
+                    'bg-amber-500'
+                  }`} />
+                  <div>
+                    <p className="text-gray-800 font-medium text-sm leading-relaxed">{activity.description}</p>
+                    <span className="text-xs text-gray-400 mt-1 block">
+                      {new Date(activity.timestamp).toLocaleDateString('ar-EG')} • {new Date(activity.timestamp).toLocaleTimeString('ar-EG', {hour: '2-digit', minute:'2-digit'})}
+                    </span>
+                  </div>
+                </div>
+              ))}
+              {(!stats.recent_activities || stats.recent_activities.length === 0) && (
+                <p className="text-gray-400 text-sm text-center py-4">لا يوجد نشاط حديث</p>
+              )}
+            </div>
+          </div>
+
+          {/* Inventory Snapshot */}
+          <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-gray-800">تنبيهات المخزون</h3>
+              <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                stats.inventory?.low_stock_items > 0 ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'
+              }`}>
+                {stats.inventory?.low_stock_items > 0 ? `${stats.inventory.low_stock_items} منخفض` : 'جيد'}
+              </span>
+            </div>
+            <div className="space-y-4">
+              <div className="flex justify-between items-center p-3 bg-gray-50 rounded-xl">
+                 <div className="flex items-center gap-3">
+                    <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg"><Icons.Box size={18} /></div>
+                    <span className="text-sm font-medium text-gray-600">إجمالي المنتجات</span>
+                 </div>
+                 <span className="font-bold text-gray-900">{stats.inventory?.total_products || 0}</span>
+              </div>
+              <div className="flex justify-between items-center p-3 bg-gray-50 rounded-xl">
+                 <div className="flex items-center gap-3">
+                    <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg"><Icons.Package size={18} /></div>
+                    <span className="text-sm font-medium text-gray-600">الكمية بالمخزن</span>
+                 </div>
+                 <span className="font-bold text-gray-900">{stats.inventory?.total_quantity || 0}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Tasks Summary */}
+          {stats.tasks && (
+            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-gray-800">ملخص المهام</h3>
+                <button onClick={() => navigate('/tasks')} className="text-xs text-indigo-600 font-medium hover:underline">عرض الكل</button>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { label: 'للتنفيذ', value: stats.tasks.todo, color: 'bg-gray-100 text-gray-700' },
+                  { label: 'قيد العمل', value: stats.tasks.in_progress, color: 'bg-blue-100 text-blue-700' },
+                  { label: 'مراجعة', value: stats.tasks.review, color: 'bg-amber-100 text-amber-700' },
+                  { label: 'منجزة', value: stats.tasks.done, color: 'bg-emerald-100 text-emerald-700' },
+                ].map(t => (
+                  <div key={t.label} className={`${t.color} p-3 rounded-2xl text-center`}>
+                    <div className="text-2xl font-bold">{t.value}</div>
+                    <div className="text-xs font-semibold mt-0.5">{t.label}</div>
+                  </div>
+                ))}
+              </div>
+              {stats.tasks.overdue > 0 && (
+                <div className="mt-3 flex items-center gap-2 p-2 bg-red-50 rounded-xl text-red-700 text-xs font-semibold">
+                  <Icons.AlertCircle />
+                  {stats.tasks.overdue} مهمة متأخرة عن الموعد
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Warranty Expiring Soon */}
+          {stats.charts?.warranty_expiring?.length > 0 && (
+            <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6">
+              <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                <Icons.AlertCircle />
+                ضمانات تنتهي قريباً
+              </h3>
+              <div className="space-y-3">
+                {stats.charts.warranty_expiring.map(d => (
+                  <div key={d.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold text-gray-800 truncate">{d.name}</div>
+                      <div className="text-xs text-gray-400">{d.asset_tag} · {d.device_type}</div>
+                    </div>
+                    <span className={`text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap ${
+                      d.days_left <= 7 ? 'bg-red-100 text-red-700' :
+                      d.days_left <= 30 ? 'bg-orange-100 text-orange-700' :
+                      'bg-yellow-100 text-yellow-700'
+                    }`}>
+                      {d.days_left} يوم
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+        </div>
+      </div>
+      
+      {/* Reports Modal */}
+      <AnimatePresence>
+        {isReportsModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-3xl p-8 max-w-2xl w-full shadow-2xl relative overflow-hidden"
+              onClick={e => e.stopPropagation()}
+            >
+               {/* Decorative Background */}
+              <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-bl-full -z-0" />
+              <div className="absolute bottom-0 left-0 w-24 h-24 bg-emerald-50 rounded-tr-full -z-0" />
+
+              <div className="relative z-10">
+                <div className="flex justify-between items-center mb-8">
+                   <div>
+                     <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                       <Icons.FileText className="text-indigo-600" />
+                       التقارير المتاحة
+                     </h2>
+                     <p className="text-gray-500 mt-1">اختر التقرير الذي تود عرضه أو طباعته</p>
+                   </div>
+                   <button 
+                    onClick={() => setIsReportsModalOpen(false)}
+                    className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400 hover:text-gray-600"
+                   >
+                     <Icons.Plus className="rotate-45" /> {/* Using Plus rotated as Close icon */}
+                   </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <ReportOption 
+                    title="تقرير جرد المخزون" 
+                    desc="عرض حالة المخزون والكميات المتاحة" 
+                    icon={<Icons.Box />} 
+                    color="indigo"
+                    onClick={() => navigate('/inventory-report')}
+                  />
+                  <ReportOption 
+                    title="تقرير الأجهزة" 
+                    desc="قائمة الأجهزة وحالتها وتوزيعها" 
+                    icon={<Icons.Cpu />} 
+                    color="sky"
+                    onClick={() => navigate('/devices')}
+                  />
+                  <ReportOption 
+                    title="تقرير الموظفين" 
+                    desc="بيانات الموظفين والأجهزة المسلمة لهم" 
+                    icon={<Icons.Users />} 
+                    color="emerald"
+                    onClick={() => navigate('/employees')}
+                  />
+                   <ReportOption 
+                    title="تقرير العهده" 
+                    desc="توزيع العهد والأجهزة على الموظفين" 
+                    icon={<Icons.FileText />} 
+                    color="amber"
+                    onClick={() => navigate('/assignments')}
+                  />
+                  <ReportOption 
+                    title="سجل الصيانة" 
+                    desc="تاريخ الصيانة والإصلاحات للأجهزة" 
+                    icon={<Icons.Wrench />} 
+                    color="rose"
+                    onClick={() => navigate('/maintenance')}
+                  />
+                   <ReportOption 
+                    title="تقرير الأقسام" 
+                    desc="توزيع الأجهزة والموظفين حسب القسم" 
+                    icon={<Icons.Settings />} 
+                    color="violet"
+                    onClick={() => navigate('/departments')}
+                  />
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+const ReportOption = ({ title, desc, icon, color, onClick }) => {
+   const colors = {
+    indigo: 'bg-indigo-50 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white',
+    sky: 'bg-sky-50 text-sky-600 group-hover:bg-sky-600 group-hover:text-white',
+    emerald: 'bg-emerald-50 text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white',
+    amber: 'bg-amber-50 text-amber-600 group-hover:bg-amber-600 group-hover:text-white',
+    rose: 'bg-rose-50 text-rose-600 group-hover:bg-rose-600 group-hover:text-white',
+    violet: 'bg-violet-50 text-violet-600 group-hover:bg-violet-600 group-hover:text-white',
+   };
+
+   return (
+    <button 
+      onClick={onClick}
+      className="flex items-start gap-4 p-4 rounded-2xl border border-gray-100 hover:border-indigo-200 hover:shadow-md transition-all text-right group bg-white"
+    >
+      <div className={`p-3 rounded-xl transition-colors duration-300 ${colors[color]}`}>
+        {icon}
+      </div>
+      <div>
+        <h3 className="font-bold text-gray-900 mb-1 group-hover:text-indigo-600 transition-colors">{title}</h3>
+        <p className="text-sm text-gray-500 font-medium">{desc}</p>
+      </div>
+    </button>
+   );
+};
+
+// --- Helper Components ---
+
+const StatCard = ({ title, value, icon, color, trend, trendValue, trendLabel, onClick }) => {
+  const colorStyles = {
+    indigo: 'bg-indigo-50 text-indigo-600',
+    emerald: 'bg-emerald-50 text-emerald-600',
+    violet: 'bg-violet-50 text-violet-600',
+    rose: 'bg-rose-50 text-rose-600',
+  };
+
+  return (
+    <motion.div
+      whileHover={{ y: -5 }}
+      onClick={onClick}
+      className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 cursor-pointer group transition-all"
+    >
+      <div className="flex justify-between items-start mb-4">
+        <div className={`p-3 rounded-2xl ${colorStyles[color]} transition-colors group-hover:scale-110 duration-300`}>
+          {icon}
+        </div>
+        {trend && (
+           <div className={`text-xs px-2 py-1 rounded-full font-medium ${
+             trend === 'alert' && trendValue > 0 ? 'bg-red-100 text-red-700' : 
+             trend === 'alert' ? 'bg-gray-100 text-gray-500' :
+             trend === 'info' ? 'bg-gray-100 text-gray-600' :
+             'bg-green-100 text-green-700'
+           }`}>
+             {trend === 'alert' ? `${trendValue} تنبيه` : 
+              trend === 'info' ? trendLabel : 
+              `${trendValue} نشط`}
+           </div>
+        )}
+      </div>
+      <div>
+        <h3 className="text-3xl font-bold text-gray-900 mb-1">{value}</h3>
+        <p className="text-sm text-gray-500 font-medium">{title}</p>
+      </div>
+    </motion.div>
+  );
+};
+
+const QuickActionButton = ({ icon, label, onClick }) => (
+  <motion.button
+    whileHover={{ scale: 1.02, backgroundColor: "rgba(255,255,255,0.2)" }}
+    whileTap={{ scale: 0.98 }}
+    onClick={onClick}
+    className="bg-white/10 backdrop-blur-sm p-4 rounded-2xl flex flex-col items-center justify-center gap-2 border border-white/10 transition-colors"
+  >
+    <div className="text-white">{icon}</div>
+    <span className="text-sm font-medium">{label}</span>
+  </motion.button>
+);
+
+const MaintenanceCard = ({ label, count, color, icon, subtext }) => {
+  const colors = {
+    amber: 'bg-amber-50 border-amber-100 text-amber-600',
+    blue: 'bg-blue-50 border-blue-100 text-blue-600',
+    emerald: 'bg-emerald-50 border-emerald-100 text-emerald-600',
+  };
+  
+  return (
+    <div className={`p-4 rounded-2xl border ${colors[color]} flex flex-col items-center justify-center text-center`}>
+      <div className="mb-2 opacity-80">{icon}</div>
+      <div className="text-2xl font-bold text-gray-900 mb-1">{count || 0}</div>
+      <div className="text-xs font-semibold uppercase tracking-wide opacity-70">{label}</div>
+      {subtext && <div className="text-[10px] mt-1 opacity-60">{subtext}</div>}
+    </div>
+  );
+};
+
+const DonutChart = ({ data }) => {
+  const total = data.reduce((acc, item) => acc + item.value, 0);
+  let currentAngle = 0;
+  
+  if (total === 0) {
+    return (
+      <div className="relative w-48 h-48 rounded-full bg-gray-50 flex items-center justify-center border-2 border-dashed border-gray-200">
+        <span className="text-gray-400 text-sm">لا توجد بيانات</span>
+      </div>
+    );
+  }
+
+  const gradientSegments = data.map(item => {
+    const percentage = (item.value / total) * 100;
+    const angle = (percentage / 100) * 360;
+    if (angle === 0) return null;
+    const endAngle = currentAngle + angle;
+    const str = `${item.color} ${currentAngle}deg ${endAngle}deg`;
+    currentAngle = endAngle;
+    return str;
+  }).filter(Boolean).join(', ');
+
+  return (
+    <div className="relative w-48 h-48 group">
+      <div 
+        className="rounded-full w-full h-full transform -rotate-90 transition-transform duration-700 ease-out hover:scale-105"
+        style={{ background: `conic-gradient(${gradientSegments})` }}
+      />
+      <div className="absolute inset-0 m-auto w-32 h-32 bg-white rounded-full flex items-center justify-center flex-col shadow-sm">
+         <span className="text-3xl font-bold text-gray-800">{total}</span>
+         <span className="text-xs text-gray-400 font-medium">جهاز كلي</span>
+      </div>
+    </div>
+  );
+};
+
+const LegendItem = ({ label, value, color }) => (
+  <div className="flex items-center gap-2">
+    <div className={`w-3 h-3 rounded-full ${color}`}></div>
+    <span className="text-gray-600 text-sm">{label} <span className="font-bold text-gray-900">({value})</span></span>
+  </div>
+);
+
+const getColorClass = (index) => {
+  const colors = [
+    'bg-indigo-500',
+    'bg-sky-500',
+    'bg-teal-500',
+    'bg-violet-500',
+    'bg-pink-500'
+  ];
+  return colors[index % colors.length];
+};
+
+const HeroStat = ({ label, value, sub, subColor = 'text-indigo-300', icon, onClick, highlight }) => (
+  <motion.button
+    whileHover={{ scale: 1.04 }}
+    whileTap={{ scale: 0.97 }}
+    onClick={onClick}
+    className={`relative text-right p-4 rounded-2xl border transition-all cursor-pointer w-full ${
+      highlight
+        ? 'bg-red-500/10 border-red-400/30 hover:bg-red-500/20'
+        : 'bg-white/5 border-white/10 hover:bg-white/10'
+    }`}
+  >
+    {highlight && (
+      <span className="absolute top-2 left-2 flex h-2.5 w-2.5">
+        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+      </span>
+    )}
+    <div className="text-2xl mb-2">{icon}</div>
+    <div className="text-3xl font-extrabold text-white leading-none mb-1">{value.toLocaleString('ar-EG')}</div>
+    <div className="text-xs text-slate-400 font-semibold mb-1">{label}</div>
+    <div className={`text-xs font-bold ${subColor}`}>{sub}</div>
+  </motion.button>
+);

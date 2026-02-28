@@ -1,0 +1,420 @@
+import { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
+
+const API_URL = 'http://localhost:3000/api';
+
+export default function Dashboard() {
+  const navigate = useNavigate();
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchStats();
+  }, []);
+
+  const fetchStats = async () => {
+    try {
+      const res = await fetch(`${API_URL}/dashboard/stats`);
+      const data = await res.json();
+      setStats(data);
+    } catch (error) {
+      console.error('Error:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  if (!stats) return null;
+
+  const totalMonthlyCost = parseFloat(stats.subscriptions?.monthly_cost || 0) + 
+                          (parseFloat(stats.subscriptions?.yearly_cost || 0) / 12);
+
+  return (
+    <div className="p-6 space-y-6 max-w-[1800px] mx-auto" dir="rtl">
+      {/* Header */}
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold text-gray-800">لوحة التحكم</h1>
+        <p className="text-gray-500">نظرة عامة شاملة على النظام</p>
+      </div>
+
+      {/* Quick Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <StatCard 
+          title="إجمالي الأجهزة"
+          value={stats.devices?.total_devices || 0}
+          icon="💻"
+          color="blue"
+          subtitle={`${stats.devices?.active_devices || 0} نشط`}
+          onClick={() => navigate('/devices')}
+        />
+        <StatCard 
+          title="الموظفين"
+          value={stats.employees?.total_employees || 0}
+          icon="👥"
+          color="green"
+          subtitle={`${stats.employees?.active_employees || 0} نشط`}
+          onClick={() => navigate('/employees')}
+        />
+        <StatCard 
+          title="الاشتراكات"
+          value={stats.subscriptions?.active_subscriptions || 0}
+          icon="📦"
+          color="purple"
+          subtitle={`${stats.subscriptions?.expiring_soon || 0} ينتهي قريباً`}
+          onClick={() => navigate('/it/subscriptions')}
+          alert={stats.subscriptions?.expiring_soon > 0}
+        />
+        <StatCard 
+          title="التكلفة الشهرية"
+          value={`${totalMonthlyCost.toFixed(0)} ج`}
+          icon="💰"
+          color="orange"
+          subtitle="اشتراكات"
+          onClick={() => navigate('/it/subscriptions')}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Devices by Type */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white rounded-xl shadow-lg p-6 lg:col-span-2"
+        >
+          <h3 className="text-xl font-bold text-gray-800 mb-4">الأجهزة حسب النوع</h3>
+          <div className="space-y-3">
+            {stats.devices?.by_type?.map((item, index) => (
+              <DeviceTypeBar 
+                key={index}
+                type={item.type}
+                count={item.count}
+                total={stats.devices.total_devices}
+                color={getColorByIndex(index)}
+              />
+            ))}
+          </div>
+        </motion.div>
+
+        {/* Device Status */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="bg-white rounded-xl shadow-lg p-6 flex flex-col items-center justify-center"
+        >
+          <h3 className="text-xl font-bold text-gray-800 mb-6 w-full text-right">حالة الأجهزة</h3>
+          <div className="flex flex-col md:flex-row items-center gap-8 w-full justify-center">
+            <DonutChart 
+              data={[
+                { label: 'نشط', value: stats.devices?.active_devices || 0, color: '#22C55E' },
+                { label: 'صيانة', value: stats.devices?.maintenance_devices || 0, color: '#EAB308' },
+                { label: 'متقاعد', value: stats.devices?.retired_devices || 0, color: '#9CA3AF' }
+              ]}
+            />
+            <div className="space-y-3 w-full md:w-auto">
+               <LegendItem label="نشط" value={stats.devices?.active_devices} color="bg-green-500" />
+               <LegendItem label="تحت الصيانة" value={stats.devices?.maintenance_devices} color="bg-yellow-500" />
+               <LegendItem label="متقاعد" value={stats.devices?.retired_devices} color="bg-gray-400" />
+            </div>
+          </div>
+        </motion.div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Maintenance Overview */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="bg-white rounded-xl shadow-lg p-6"
+        >
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-xl font-bold text-gray-800">الصيانة (آخر 30 يوم)</h3>
+            <button 
+              onClick={() => navigate('/maintenance')}
+              className="text-sm text-blue-600 hover:text-blue-700"
+            >
+              عرض الكل →
+            </button>
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            <div className="text-center p-4 bg-yellow-50 rounded-lg">
+              <div className="text-2xl font-bold text-yellow-600">{stats.maintenance?.pending_maintenance || 0}</div>
+              <div className="text-sm text-gray-600">معلق</div>
+            </div>
+            <div className="text-center p-4 bg-blue-50 rounded-lg">
+              <div className="text-2xl font-bold text-blue-600">{stats.maintenance?.in_progress_maintenance || 0}</div>
+              <div className="text-sm text-gray-600">قيد التنفيذ</div>
+            </div>
+            <div className="text-center p-4 bg-green-50 rounded-lg">
+              <div className="text-2xl font-bold text-green-600">{stats.maintenance?.completed_maintenance || 0}</div>
+              <div className="text-sm text-gray-600">مكتمل</div>
+            </div>
+          </div>
+          <div className="mt-4 pt-4 border-t">
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600">إجمالي التكاليف:</span>
+              <span className="text-2xl font-bold text-gray-800">{parseFloat(stats.maintenance?.total_cost || 0).toFixed(2)} ج</span>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Quick Actions */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl shadow-lg p-6 text-white"
+        >
+          <h3 className="text-xl font-bold mb-4">إجراءات سريعة</h3>
+          <div className="grid grid-cols-2 gap-3">
+            <QuickAction 
+              icon="➕"
+              label="إضافة جهاز"
+              onClick={() => navigate('/devices')}
+            />
+            <QuickAction 
+              icon="👤"
+              label="إضافة موظف"
+              onClick={() => navigate('/employees')}
+            />
+            <QuickAction 
+              icon="🔧"
+              label="سجل صيانة"
+              onClick={() => navigate('/maintenance')}
+            />
+            <QuickAction 
+              icon="📊"
+              label="التقارير"
+              onClick={() => navigate('/inventory-report')}
+            />
+            <QuickAction 
+              icon="📦"
+              label="المخزون"
+              onClick={() => navigate('/inventory')}
+            />
+            <QuickAction 
+              icon="⚙️"
+              label="الإعدادات"
+              onClick={() => navigate('/settings')}
+            />
+          </div>
+        </motion.div>
+      </div>
+
+      {/* Inventory & Recent Activities */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Inventory Stats */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+          className="bg-white rounded-xl shadow-lg p-6"
+        >
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-xl font-bold text-gray-800">حالة المخزون</h3>
+            <button 
+              onClick={() => navigate('/inventory')}
+              className="text-sm text-blue-600 hover:text-blue-700"
+            >
+              عرض الكل →
+            </button>
+          </div>
+          <div className="space-y-4">
+            <div className="flex justify-between items-center p-4 bg-blue-50 rounded-lg">
+              <div>
+                <div className="text-sm text-gray-600">إجمالي المنتجات</div>
+                <div className="text-2xl font-bold text-blue-600">{stats.inventory?.total_products || 0}</div>
+              </div>
+              <div className="text-4xl">📦</div>
+            </div>
+            <div className="flex justify-between items-center p-4 bg-green-50 rounded-lg">
+              <div>
+                <div className="text-sm text-gray-600">إجمالي الكمية</div>
+                <div className="text-2xl font-bold text-green-600">{stats.inventory?.total_quantity || 0}</div>
+              </div>
+              <div className="text-4xl">📊</div>
+            </div>
+            {stats.inventory?.low_stock_items > 0 && (
+              <div className="flex justify-between items-center p-4 bg-red-50 rounded-lg border-2 border-red-200">
+                <div>
+                  <div className="text-sm text-gray-600">مخزون منخفض</div>
+                  <div className="text-2xl font-bold text-red-600">{stats.inventory?.low_stock_items}</div>
+                </div>
+                <div className="text-4xl">⚠️</div>
+              </div>
+            )}
+          </div>
+        </motion.div>
+
+        {/* Recent Activities */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+          className="bg-white rounded-xl shadow-lg p-6"
+        >
+          <h3 className="text-xl font-bold text-gray-800 mb-4">النشاط الأخير</h3>
+          <div className="space-y-3 max-h-80 overflow-y-auto">
+            {stats.recent_activities?.map((activity, index) => (
+              <div key={index} className="flex items-start gap-3 p-3 hover:bg-gray-50 rounded-lg transition">
+                <div className={`w-2 h-2 rounded-full mt-2 ${
+                  activity.type === 'device' ? 'bg-blue-500' :
+                  activity.type === 'employee' ? 'bg-green-500' :
+                  'bg-purple-500'
+                }`} />
+                <div className="flex-1">
+                  <p className="text-sm text-gray-800">{activity.description}</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {new Date(activity.timestamp).toLocaleString('ar-EG')}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      </div>
+    </div>
+  );
+}
+
+// StatCard Component
+const StatCard = ({ title, value, icon, color, subtitle, onClick, alert }) => {
+  const colors = {
+    blue: 'from-blue-500 to-blue-600',
+    green: 'from-green-500 to-green-600',
+    purple: 'from-purple-500 to-purple-600',
+    orange: 'from-orange-500 to-orange-600'
+  };
+
+  return (
+    <motion.div
+      whileHover={{ scale: 1.02 }}
+      onClick={onClick}
+      className={`bg-gradient-to-br ${colors[color]} rounded-xl shadow-lg p-6 text-white cursor-pointer relative overflow-hidden`}
+    >
+      {alert && (
+        <div className="absolute top-2 left-2">
+          <span className="relative flex h-3 w-3">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+          </span>
+        </div>
+      )}
+      <div className="flex justify-between items-start mb-4">
+        <div className="text-5xl opacity-20">{icon}</div>
+      </div>
+      <div className="text-3xl font-bold mb-1">{value}</div>
+      <div className="text-sm opacity-90">{title}</div>
+      {subtitle && (
+        <div className="text-xs opacity-75 mt-2">{subtitle}</div>
+      )}
+    </motion.div>
+  );
+};
+
+// DeviceTypeBar Component
+const DeviceTypeBar = ({ type, count, total, color }) => {
+  const percentage = total > 0 ? (count / total) * 100 : 0;
+  
+  return (
+    <div>
+      <div className="flex justify-between text-sm mb-1">
+        <span className="font-medium text-gray-700">{type}</span>
+        <span className="text-gray-500">{count} ({percentage.toFixed(0)}%)</span>
+      </div>
+      <div className="w-full bg-gray-200 rounded-full h-2.5">
+        <div 
+          className={`h-2.5 rounded-full ${color}`}
+          style={{ width: `${percentage}%` }}
+        />
+      </div>
+    </div>
+  );
+};
+
+// StatusItem Component (Deprecated, but kept if needed elsewhere, though unused in new design)
+const StatusItem = ({ label, count, total, color }) => { /* ... */ };
+
+// DonutChart Component
+const DonutChart = ({ data }) => {
+  const total = data.reduce((acc, item) => acc + item.value, 0);
+  let currentAngle = 0;
+  
+  if (total === 0) {
+    return (
+      <div className="relative w-48 h-48 rounded-full bg-gray-100 flex items-center justify-center">
+        <span className="text-gray-400">لا توجد بيانات</span>
+      </div>
+    );
+  }
+
+  const gradientSegments = data.map(item => {
+    const percentage = (item.value / total) * 100;
+    const angle = (percentage / 100) * 360;
+    if (angle === 0) return null;
+    const endAngle = currentAngle + angle;
+    const str = `${item.color} ${currentAngle}deg ${endAngle}deg`;
+    currentAngle = endAngle;
+    return str;
+  }).filter(Boolean).join(', ');
+
+  return (
+    <div className="relative w-48 h-48">
+      <div 
+        className="rounded-full w-full h-full shadow-lg"
+        style={{ background: `conic-gradient(${gradientSegments})` }}
+      />
+      <div className="absolute inset-0 m-auto w-32 h-32 bg-white rounded-full flex items-center justify-center flex-col shadow-inner">
+         <span className="text-3xl font-bold text-gray-800">{total}</span>
+         <span className="text-xs text-gray-500 font-medium">إجمالي الأجهزة</span>
+      </div>
+    </div>
+  );
+};
+
+// LegendItem Component
+const LegendItem = ({ label, value, color }) => (
+  <div className="flex items-center gap-3">
+    <div className={`w-3 h-3 rounded-full ${color}`}></div>
+    <span className="text-gray-600 text-sm flex-1">{label}</span>
+    <span className="font-bold text-gray-800">{value}</span>
+  </div>
+);
+
+// QuickAction Component
+const QuickAction = ({ icon, label, onClick }) => (
+  <motion.button
+    whileHover={{ scale: 1.05 }}
+    whileTap={{ scale: 0.95 }}
+    onClick={onClick}
+    className="bg-white bg-opacity-20 hover:bg-opacity-30 rounded-lg p-4 text-center transition backdrop-blur-sm"
+  >
+    <div className="text-3xl mb-2">{icon}</div>
+    <div className="text-sm font-medium">{label}</div>
+  </motion.button>
+);
+
+// Color helper
+const getColorByIndex = (index) => {
+  const colors = [
+    'bg-blue-500',
+    'bg-green-500',
+    'bg-purple-500',
+    'bg-orange-500',
+    'bg-pink-500',
+    'bg-indigo-500',
+    'bg-teal-500',
+    'bg-red-500'
+  ];
+  return colors[index % colors.length];
+};

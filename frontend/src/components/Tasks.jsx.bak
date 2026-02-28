@@ -1,0 +1,641 @@
+import { useState, useEffect, useCallback } from 'react';
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
+import { motion, AnimatePresence } from 'framer-motion';
+import { toast, Toaster } from 'react-hot-toast';
+
+const API_URL = `${window.location.protocol}//${window.location.hostname}:3000/api`;
+const token = () => localStorage.getItem('token');
+const headers = () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${token()}` });
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+const COLUMNS = [
+  { id: 'todo',        label: 'قائمة المهام',    color: 'bg-slate-100 border-slate-300',    dot: 'bg-slate-400',   header: 'bg-slate-200' },
+  { id: 'in_progress', label: 'قيد التنفيذ',      color: 'bg-blue-50 border-blue-200',       dot: 'bg-blue-500',    header: 'bg-blue-100' },
+  { id: 'review',      label: 'مراجعة',           color: 'bg-yellow-50 border-yellow-200',   dot: 'bg-yellow-500',  header: 'bg-yellow-100' },
+  { id: 'done',        label: 'مكتمل ✓',          color: 'bg-green-50 border-green-200',     dot: 'bg-green-500',   header: 'bg-green-100' },
+];
+
+const PRIORITY = {
+  low:    { label: 'منخفضة', cls: 'bg-gray-100 text-gray-600',    icon: '▽' },
+  medium: { label: 'متوسطة', cls: 'bg-blue-100 text-blue-700',    icon: '◈' },
+  high:   { label: 'عالية',  cls: 'bg-orange-100 text-orange-700', icon: '▲' },
+  urgent: { label: 'عاجلة',  cls: 'bg-red-100 text-red-700',      icon: '🔥' },
+};
+
+const STATUS_LABELS = { todo: 'قائمة المهام', in_progress: 'قيد التنفيذ', review: 'مراجعة', done: 'مكتمل' };
+
+// ─── Helper ──────────────────────────────────────────────────────────────────
+function Avatar({ name, avatar, size = 6 }) {
+  if (avatar) return <img src={avatar} className={`w-${size} h-${size} rounded-full object-cover`} alt={name} />;
+  const initials = name?.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase() || '?';
+  const colors = ['bg-purple-500', 'bg-blue-500', 'bg-green-500', 'bg-orange-500', 'bg-pink-500', 'bg-teal-500'];
+  const color = colors[name?.charCodeAt(0) % colors.length] || 'bg-gray-400';
+  return (
+    <div className={`w-${size} h-${size} rounded-full ${color} flex items-center justify-center text-white font-bold`}
+      style={{ fontSize: size * 2 }}>
+      {initials}
+    </div>
+  );
+}
+
+function formatDate(d) {
+  if (!d) return null;
+  const date = new Date(d);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const diff = Math.ceil((date - today) / 86400000);
+  if (diff < 0) return { text: `متأخر ${Math.abs(diff)} يوم`, cls: 'text-red-600 font-semibold' };
+  if (diff === 0) return { text: 'اليوم', cls: 'text-orange-600 font-semibold' };
+  if (diff <= 3) return { text: `بعد ${diff} أيام`, cls: 'text-yellow-600' };
+  return { text: date.toLocaleDateString('ar-EG', { day: 'numeric', month: 'short' }), cls: 'text-gray-500' };
+}
+
+// ─── Task Card ───────────────────────────────────────────────────────────────
+function TaskCard({ task, index, onOpen, onDelete }) {
+  const p = PRIORITY[task.priority] || PRIORITY.medium;
+  const due = formatDate(task.due_date);
+  return (
+    <Draggable draggableId={`task-${task.id}`} index={index}>
+      {(provided, snapshot) => (
+        <div
+          ref={provided.innerRef}
+          {...provided.draggableProps}
+          {...provided.dragHandleProps}
+          onClick={() => onOpen(task)}
+          className={`bg-white rounded-xl border border-gray-200 p-3 mb-2 cursor-pointer shadow-sm hover:shadow-md transition-all select-none
+            ${snapshot.isDragging ? 'shadow-xl rotate-1 opacity-90 border-blue-300' : ''}`}
+        >
+          {/* Priority badge */}
+          <div className="flex items-start justify-between gap-2 mb-2">
+            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${p.cls}`}>
+              {p.icon} {p.label}
+            </span>
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete(task.id); }}
+              className="text-gray-300 hover:text-red-500 transition opacity-0 group-hover:opacity-100 text-xs"
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Title */}
+          <p className={`text-sm font-semibold text-gray-700 leading-snug mb-2 line-clamp-2 ${task.status === 'done' ? 'line-through text-gray-400' : ''}`}>
+            {task.title}
+          </p>
+
+          {/* Footer */}
+          <div className="flex items-center justify-between mt-2">
+            <div className="flex items-center gap-1">
+              {task.assigned_to_name ? (
+                <div className="flex items-center gap-1.5" title={task.assigned_to_name}>
+                  <Avatar name={task.assigned_to_name} avatar={task.assigned_to_avatar} size={5} />
+                  <span className="text-xs text-gray-500 hidden sm:block truncate max-w-[80px]">{task.assigned_to_name.split(' ')[0]}</span>
+                </div>
+              ) : (
+                <span className="text-xs text-gray-400 italic">غير معين</span>
+              )}
+            </div>
+            {due && (
+              <span className={`text-xs flex items-center gap-1 ${due.cls}`}>
+                📅 {due.text}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+    </Draggable>
+  );
+}
+
+// ─── Create Task Modal ────────────────────────────────────────────────────────
+function CreateTaskModal({ isOpen, onClose, onCreated, users }) {
+  const [form, setForm] = useState({ title: '', description: '', priority: 'medium', status: 'todo', assigned_to: '', due_date: '' });
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.title.trim()) return toast.error('عنوان المهمة مطلوب');
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/tasks`, {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify({ ...form, assigned_to: form.assigned_to || null })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success('تم إنشاء المهمة');
+      onCreated(data);
+      onClose();
+      setForm({ title: '', description: '', priority: 'medium', status: 'todo', assigned_to: '', due_date: '' });
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!isOpen) return null;
+  return (
+    <AnimatePresence>
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+          className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+          <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-5 rounded-t-2xl flex justify-between items-center">
+            <h2 className="text-lg font-bold">إنشاء مهمة جديدة</h2>
+            <button onClick={onClose} className="hover:bg-white/20 rounded-lg p-1.5 transition">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <form onSubmit={handleSubmit} className="p-5 space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">عنوان المهمة *</label>
+              <input value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))}
+                className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none"
+                placeholder="أدخل عنوان المهمة..." />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">التفاصيل</label>
+              <textarea value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
+                className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 outline-none resize-none"
+                rows={3} placeholder="وصف المهمة..." />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">الأولوية</label>
+                <select value={form.priority} onChange={e => setForm(p => ({ ...p, priority: e.target.value }))}
+                  className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-300 outline-none">
+                  <option value="low">🟢 منخفضة</option>
+                  <option value="medium">🟡 متوسطة</option>
+                  <option value="high">🟠 عالية</option>
+                  <option value="urgent">🔴 عاجلة</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">العمود</label>
+                <select value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))}
+                  className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-300 outline-none">
+                  {COLUMNS.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">تعيين إلى</label>
+                <select value={form.assigned_to} onChange={e => setForm(p => ({ ...p, assigned_to: e.target.value }))}
+                  className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-300 outline-none">
+                  <option value="">— غير معين —</option>
+                  {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">تاريخ الاستحقاق</label>
+                <input type="date" value={form.due_date} onChange={e => setForm(p => ({ ...p, due_date: e.target.value }))}
+                  className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-300 outline-none" />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button type="button" onClick={onClose} className="px-4 py-2 text-gray-600 hover:text-gray-800 transition">إلغاء</button>
+              <button type="submit" disabled={loading}
+                className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition disabled:opacity-60 flex items-center gap-2">
+                {loading && <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>}
+                إنشاء المهمة
+              </button>
+            </div>
+          </form>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
+// ─── Task Detail Modal ────────────────────────────────────────────────────────
+function TaskDetailModal({ task, users, onClose, onSave, onDelete }) {
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({ title: task.title, description: task.description || '', priority: task.priority, status: task.status, assigned_to: task.assigned_to || '', due_date: task.due_date ? task.due_date.split('T')[0] : '' });
+  const [comments, setComments] = useState(task.comments || []);
+  const [newComment, setNewComment] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSave = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/tasks/${task.id}`, {
+        method: 'PUT', headers: headers(),
+        body: JSON.stringify({ ...form, assigned_to: form.assigned_to || null })
+      });
+      // If assigned_to changed, call assign endpoint
+      if (String(form.assigned_to) !== String(task.assigned_to || '')) {
+        await fetch(`${API_URL}/tasks/${task.id}/assign`, {
+          method: 'PUT', headers: headers(),
+          body: JSON.stringify({ assigned_to: form.assigned_to || null })
+        });
+      }
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success('تم حفظ التعديلات');
+      onSave({ ...data, assigned_to_name: users.find(u => u.id === parseInt(form.assigned_to))?.full_name, assigned_to_avatar: users.find(u => u.id === parseInt(form.assigned_to))?.avatar });
+      setEditing(false);
+    } catch (e) { toast.error(e.message); }
+    finally { setLoading(false); }
+  };
+
+  const addComment = async () => {
+    if (!newComment.trim()) return;
+    try {
+      const res = await fetch(`${API_URL}/tasks/${task.id}/comments`, {
+        method: 'POST', headers: headers(),
+        body: JSON.stringify({ comment: newComment })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setComments(prev => [...prev, data]);
+      setNewComment('');
+    } catch (e) { toast.error(e.message); }
+  };
+
+  const p = PRIORITY[form.priority] || PRIORITY.medium;
+  const due = formatDate(form.due_date);
+
+  return (
+    <AnimatePresence>
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+          className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+
+          {/* Header */}
+          <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-5 flex justify-between items-start">
+            <div className="flex-1 ml-4">
+              {editing ? (
+                <input value={form.title} onChange={e => setForm(p => ({ ...p, title: e.target.value }))}
+                  className="w-full bg-white/20 rounded-lg px-3 py-1.5 text-white placeholder-white/60 outline-none border border-white/30 font-bold text-lg" />
+              ) : (
+                <h2 className="text-lg font-bold leading-snug">{task.title}</h2>
+              )}
+              <div className="flex items-center gap-2 mt-2">
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium bg-white/20`}>{p.icon} {p.label}</span>
+                <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">{STATUS_LABELS[form.status]}</span>
+                {due && <span className={`text-xs bg-white/20 px-2 py-0.5 rounded-full`}>📅 {due.text}</span>}
+              </div>
+            </div>
+            <div className="flex gap-2">
+              {editing ? (
+                <>
+                  <button onClick={handleSave} disabled={loading} className="text-xs bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg transition font-medium">
+                    {loading ? '...' : 'حفظ'}
+                  </button>
+                  <button onClick={() => setEditing(false)} className="text-xs hover:bg-white/20 px-3 py-1.5 rounded-lg transition">إلغاء</button>
+                </>
+              ) : (
+                <button onClick={() => setEditing(true)} className="text-xs bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg transition">✏️ تعديل</button>
+              )}
+              <button onClick={onClose} className="hover:bg-white/20 rounded-lg p-1.5 transition">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {/* Body */}
+          <div className="overflow-y-auto flex-1 p-5 space-y-5">
+            {/* Edit fields */}
+            {editing && (
+              <div className="grid grid-cols-2 gap-4 bg-gray-50 rounded-xl p-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">الأولوية</label>
+                  <select value={form.priority} onChange={e => setForm(p => ({ ...p, priority: e.target.value }))}
+                    className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-300">
+                    <option value="low">🟢 منخفضة</option>
+                    <option value="medium">🟡 متوسطة</option>
+                    <option value="high">🟠 عالية</option>
+                    <option value="urgent">🔴 عاجلة</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">الحالة</label>
+                  <select value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))}
+                    className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-300">
+                    {COLUMNS.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">تعيين إلى</label>
+                  <select value={form.assigned_to} onChange={e => setForm(p => ({ ...p, assigned_to: e.target.value }))}
+                    className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-300">
+                    <option value="">— غير معين —</option>
+                    {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">تاريخ الاستحقاق</label>
+                  <input type="date" value={form.due_date} onChange={e => setForm(p => ({ ...p, due_date: e.target.value }))}
+                    className="w-full border rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-300" />
+                </div>
+              </div>
+            )}
+
+            {/* Description */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">📝 التفاصيل</label>
+              {editing ? (
+                <textarea value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-300 outline-none resize-none" rows={4} />
+              ) : (
+                <p className="text-sm text-gray-600 whitespace-pre-wrap leading-relaxed bg-gray-50 rounded-lg p-3">
+                  {task.description || <span className="italic text-gray-400">لا يوجد تفاصيل</span>}
+                </p>
+              )}
+            </div>
+
+            {/* Assignee info */}
+            {!editing && task.assigned_to_name && (
+              <div className="flex items-center gap-3 bg-indigo-50 rounded-xl p-3">
+                <Avatar name={task.assigned_to_name} avatar={task.assigned_to_avatar} size={8} />
+                <div>
+                  <p className="text-xs text-gray-500">مُعين إلى</p>
+                  <p className="text-sm font-semibold text-gray-800">{task.assigned_to_name}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Comments */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-3">💬 التعليقات ({comments.length})</label>
+              <div className="space-y-3 max-h-48 overflow-y-auto mb-3">
+                {comments.length === 0 && <p className="text-sm text-gray-400 italic text-center py-4">لا توجد تعليقات بعد</p>}
+                {comments.map(c => (
+                  <div key={c.id} className="flex gap-2">
+                    <Avatar name={c.user_name || '؟'} avatar={c.avatar} size={7} />
+                    <div className="flex-1 bg-gray-50 rounded-xl p-3">
+                      <div className="flex justify-between mb-1">
+                        <span className="text-xs font-semibold text-gray-700">{c.user_name || 'مجهول'}</span>
+                        <span className="text-xs text-gray-400">{new Date(c.created_at).toLocaleString('ar-EG', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}</span>
+                      </div>
+                      <p className="text-sm text-gray-600">{c.comment}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <input value={newComment} onChange={e => setNewComment(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && !e.shiftKey && addComment()}
+                  className="flex-1 border rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-300 outline-none"
+                  placeholder="اكتب تعليقاً..." />
+                <button onClick={addComment}
+                  className="bg-indigo-600 text-white px-4 py-2 rounded-xl hover:bg-indigo-700 transition text-sm font-medium">
+                  إرسال
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="border-t p-4 flex justify-between items-center bg-gray-50">
+            <button onClick={() => { if (window.confirm('هل تريد حذف هذه المهمة؟')) onDelete(task.id); }}
+              className="text-sm text-red-500 hover:text-red-700 transition">
+              🗑 حذف المهمة
+            </button>
+            <span className="text-xs text-gray-400">
+              أُنشئت: {new Date(task.created_at).toLocaleDateString('ar-EG')}
+              {task.created_by_name && ` · بواسطة ${task.created_by_name}`}
+            </span>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+export default function Tasks() {
+  const [tasks, setTasks] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreate, setShowCreate] = useState(false);
+  const [selectedTask, setSelectedTask] = useState(null);
+  const [filterUser, setFilterUser] = useState('');
+  const [filterPriority, setFilterPriority] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const fetchTasks = useCallback(async () => {
+    try {
+      const [tasksRes, usersRes] = await Promise.all([
+        fetch(`${API_URL}/tasks`, { headers: headers() }),
+        fetch(`${API_URL}/tasks/users-list`, { headers: headers() })
+      ]);
+      const [tasksData, usersData] = await Promise.all([tasksRes.json(), usersRes.json()]);
+      setTasks(Array.isArray(tasksData) ? tasksData : []);
+      setUsers(Array.isArray(usersData) ? usersData : []);
+    } catch (e) {
+      toast.error('حدث خطأ في تحميل المهام');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchTasks(); }, [fetchTasks]);
+
+  const getColumnTasks = (colId) => {
+    return tasks
+      .filter(t => t.status === colId)
+      .filter(t => !filterUser || String(t.assigned_to) === filterUser)
+      .filter(t => !filterPriority || t.priority === filterPriority)
+      .filter(t => !searchTerm || t.title.toLowerCase().includes(searchTerm.toLowerCase()))
+      .sort((a, b) => a.position - b.position);
+  };
+
+  const onDragEnd = async (result) => {
+    const { draggableId, source, destination } = result;
+    if (!destination) return;
+    if (source.droppableId === destination.droppableId && source.index === destination.index) return;
+
+    const taskId = parseInt(draggableId.replace('task-', ''));
+    const newStatus = destination.droppableId;
+    const newPosition = destination.index;
+
+    // Optimistic update
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus, position: newPosition } : t));
+
+    try {
+      await fetch(`${API_URL}/tasks/${taskId}/move`, {
+        method: 'PUT', headers: headers(),
+        body: JSON.stringify({ status: newStatus, position: newPosition })
+      });
+    } catch (e) {
+      toast.error('حدث خطأ في تحريك المهمة');
+      fetchTasks(); // revert
+    }
+  };
+
+  const handleTaskCreated = (newTask) => {
+    setTasks(prev => [...prev, newTask]);
+  };
+
+  const handleTaskSaved = (updated) => {
+    setTasks(prev => prev.map(t => t.id === updated.id ? { ...t, ...updated } : t));
+    setSelectedTask(prev => prev ? { ...prev, ...updated } : null);
+  };
+
+  const handleDelete = async (taskId) => {
+    try {
+      await fetch(`${API_URL}/tasks/${taskId}`, { method: 'DELETE', headers: headers() });
+      setTasks(prev => prev.filter(t => t.id !== taskId));
+      setSelectedTask(null);
+      toast.success('تم حذف المهمة');
+    } catch (e) {
+      toast.error('حدث خطأ في الحذف');
+    }
+  };
+
+  const openTaskDetail = async (task) => {
+    try {
+      const res = await fetch(`${API_URL}/tasks/${task.id}`, { headers: headers() });
+      const data = await res.json();
+      setSelectedTask(data);
+    } catch {
+      setSelectedTask(task);
+    }
+  };
+
+  const totalByStatus = (colId) => tasks.filter(t => t.status === colId).length;
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6 min-h-screen" dir="rtl">
+      <Toaster position="top-center" />
+
+      {/* Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">📋 إدارة المهام</h1>
+          <p className="text-gray-500 mt-1 text-sm">
+            {tasks.length} مهمة •
+            {tasks.filter(t => t.status !== 'done').length} قيد التنفيذ •
+            {tasks.filter(t => t.status === 'done').length} مكتملة
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {/* Search */}
+          <div className="relative">
+            <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+              className="border rounded-xl pl-4 pr-10 py-2 text-sm focus:ring-2 focus:ring-indigo-300 outline-none w-44"
+              placeholder="بحث في المهام..." />
+            <span className="absolute left-3 top-2.5 text-gray-400 text-sm">🔍</span>
+          </div>
+          {/* Filter by user */}
+          <select value={filterUser} onChange={e => setFilterUser(e.target.value)}
+            className="border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-300 outline-none">
+            <option value="">كل المستخدمين</option>
+            {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+          </select>
+          {/* Filter by priority */}
+          <select value={filterPriority} onChange={e => setFilterPriority(e.target.value)}
+            className="border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-300 outline-none">
+            <option value="">كل الأولويات</option>
+            <option value="urgent">🔴 عاجلة</option>
+            <option value="high">🟠 عالية</option>
+            <option value="medium">🟡 متوسطة</option>
+            <option value="low">🟢 منخفضة</option>
+          </select>
+          {/* New task */}
+          <button onClick={() => setShowCreate(true)}
+            className="bg-indigo-600 text-white px-5 py-2 rounded-xl hover:bg-indigo-700 transition flex items-center gap-2 font-medium shadow-sm">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            مهمة جديدة
+          </button>
+        </div>
+      </div>
+
+      {/* Kanban Board */}
+      <DragDropContext onDragEnd={onDragEnd}>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          {COLUMNS.map(col => {
+            const colTasks = getColumnTasks(col.id);
+            const total = totalByStatus(col.id);
+            return (
+              <div key={col.id} className={`rounded-2xl border ${col.color} flex flex-col min-h-[500px]`}>
+                {/* Column Header */}
+                <div className={`${col.header} rounded-t-2xl p-4 border-b border-opacity-30`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-3 h-3 rounded-full ${col.dot}`}></span>
+                      <span className="font-bold text-gray-700">{col.label}</span>
+                    </div>
+                    <span className="bg-white rounded-full px-2.5 py-0.5 text-xs font-bold text-gray-600 shadow-sm">
+                      {total}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Droppable area */}
+                <Droppable droppableId={col.id}>
+                  {(provided, snapshot) => (
+                    <div
+                      ref={provided.innerRef}
+                      {...provided.droppableProps}
+                      className={`flex-1 p-3 transition-colors rounded-b-2xl ${snapshot.isDraggingOver ? 'bg-blue-100/50' : ''}`}
+                    >
+                      {colTasks.length === 0 && !snapshot.isDraggingOver && (
+                        <div className="text-center text-gray-400 text-sm mt-8 italic">
+                          <div className="text-3xl mb-2 opacity-30">
+                            {col.id === 'todo' ? '📋' : col.id === 'in_progress' ? '⚙️' : col.id === 'review' ? '👁' : '✅'}
+                          </div>
+                          لا توجد مهام
+                        </div>
+                      )}
+                      {colTasks.map((task, idx) => (
+                        <TaskCard key={task.id} task={task} index={idx} onOpen={openTaskDetail} onDelete={handleDelete} />
+                      ))}
+                      {provided.placeholder}
+                    </div>
+                  )}
+                </Droppable>
+
+                {/* Quick add */}
+                <button onClick={() => { setShowCreate(true); }}
+                  className="m-3 mt-0 py-2 text-sm text-gray-500 hover:text-indigo-600 hover:bg-white/60 rounded-xl transition border border-dashed border-gray-300 flex items-center justify-center gap-1">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  إضافة مهمة
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </DragDropContext>
+
+      {/* Create Modal */}
+      <CreateTaskModal
+        isOpen={showCreate}
+        onClose={() => setShowCreate(false)}
+        onCreated={handleTaskCreated}
+        users={users}
+      />
+
+      {/* Detail Modal */}
+      {selectedTask && (
+        <TaskDetailModal
+          task={selectedTask}
+          users={users}
+          onClose={() => setSelectedTask(null)}
+          onSave={handleTaskSaved}
+          onDelete={handleDelete}
+        />
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Environment variables (sensitive data)
+.env
+backend/.env
+
+# Logs
+*.log
+backend/backend.log
+backend/server.log
+
+# Build output
+frontend/dist/
+
+# Uploads
+backend/uploads/*
+!backend/uploads/.gitkeep
